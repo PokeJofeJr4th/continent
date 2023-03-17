@@ -1,0 +1,8 @@
+animal:Deer
+6,4,2,8
+gem:Ruby
+6,6,12
+plant:Grape
+10,1,2
+metal:Brass
+2.5,2.5,2.5

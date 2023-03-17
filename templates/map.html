@@ -1,0 +1,43 @@
+<div style="width:{{ (Range[1][0] - Range[0][0]) * 20 * Scale }}px;
+    height:{{ (Range[1][1] - Range[0][1]) * 20 * Scale }}px;
+    position:relative;
+    background-color:black;
+    padding:5px">
+{% for x in range(Range[0][0], Range[1][0]) %}{% for y in range(Range[0][1], Range[1][1]) %}{% if (x, y) in WorldMap.keys() %}
+        <span style="width:{{ 20 * Scale }}px;
+        height:{{ 20 * Scale }}px;
+        background-color:{{ Colors[WorldMap[(x, y)]['Terrain']] }};
+        position:absolute;
+        left:{{ ((x - Range[0][0]) * 20 + 3) * Scale + 2 }}px;
+        top:{{ ((y - Range[0][1]) * 20 + 3) * Scale + 2 }}px;
+    "></span>{% endif %}{% endfor %}{% endfor %}
+{% for k in TradeRoutes %}{% set val = (k[1][0] - k[0][0]) * (k[1][1] - k[0][1]) %}
+    <span class="{% if val < 0 %}{{ 'tradeleft' }}{% elif val > 0%}{{ 'traderight' }}{% elif k[1][0] - k[0][0] == 0 %}{{ 'tradevertical' }}{% else %}{{ 'tradehorizontal' }}{% endif %}" style="
+        position:absolute;
+        left:{{ ((min(k[0][0], k[1][0]) - Range[0][0]) * 20 + 15) * Scale }}px;
+        top:{{ ((min(k[0][1], k[1][1]) - Range[0][1]) * 20 + 15) * Scale }}px;
+        width:{{ (abs(k[0][0] - k[1][0]) * 20) * Scale + 4 }}px;
+        height:{{ (abs(k[0][1] - k[1][1]) * 20) * Scale + 4 }}px;
+    "></span>{% endfor %}
+{% for x in range(Range[0][0], Range[1][0]) %}{% for y in range(Range[0][1], Range[1][1]) %}{% if (x, y) in CityList %}
+        <a href="#city_({{ x }}, {{ y }})"
+           style="
+        border-radius:{{10 * Scale }}px;
+        position:absolute;
+        {% if (x, y) in Selection %}
+        width:{{ 8 * Scale }}px;
+        height:{{ 8 * Scale }}px;
+        background-color:white;
+        border: {{ 4 * Scale }}px solid black;
+        left:{{ ((x - Range[0][0]) * 20 + 5) * Scale + 2 }}px;
+        top:{{ ((y - Range[0][1]) * 20 + 5) * Scale + 2 }}px;
+        {% else %}
+        width:{{ 12 * Scale }}px;
+        height:{{ 12 * Scale }}px;
+        background-color:black;
+        left:{{ ((x - Range[0][0]) * 20 + 7) * Scale + 2 }}px;
+        top:{{ ((y - Range[0][1]) * 20 + 7) * Scale + 2 }}px;
+        {% endif %}"
+            class="tooltip"><span class="tooltiptext">{{ WorldMap[(x, y)]['Structure'].name }}</span></a>
+    {% endif %}{% endfor %}{% endfor %}
+</div>

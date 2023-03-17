@@ -1,0 +1,140 @@
+{
+  "file_type": "gen",
+  "Biomes": {
+    "Desert": {
+      "Resources": {
+        "Animal": 0.1,
+        "Fish": 0.0,
+        "Plant": 0.2,
+        "Metal": 0.1,
+        "Gemstone": 0.2
+      },
+      "Monsters": [
+        "Worm",
+        "Dragon"
+      ],
+      "Color": [
+        160,
+        140,
+        90
+      ]
+    },
+    "Forest": {
+      "Resources": {
+        "Animal": 0.3,
+        "Fish": 0.0,
+        "Plant": 0.9,
+        "Metal": 0.1,
+        "Gemstone": 0.1
+      },
+      "Monsters": [
+        "Beast"
+      ],
+      "Color": [
+        90,
+        150,
+        80
+      ]
+    },
+    "Jungle": {
+      "Resources": {
+        "Animal": 0.4,
+        "Fish": 0.0,
+        "Plant": 1.0,
+        "Metal": 0.1,
+        "Gemstone": 0.1
+      },
+      "Monsters": [
+        "Beast"
+      ],
+      "Color": [
+        40,
+        130,
+        80
+      ]
+    },
+    "Mountain": {
+      "Resources": {
+        "Animal": 0.2,
+        "Fish": 0.0,
+        "Plant": 0.4,
+        "Metal": 0.5,
+        "Gemstone": 0.4
+      },
+      "Monsters": [
+        "Dragon"
+      ],
+      "Color": [
+        95,
+        95,
+        95
+      ]
+    },
+    "Ocean": {
+      "Resources": {},
+      "Monsters": [
+        "Leviathan"
+      ],
+      "Color": [
+        70,
+        90,
+        140
+      ]
+    },
+    "Plain": {
+      "Resources": {
+        "Animal": 0.4,
+        "Fish": 0.0,
+        "Plant": 0.9,
+        "Metal": 0.1,
+        "Gemstone": 0.1
+      },
+      "Monsters": [
+        "Dragon",
+        "Beast"
+      ],
+      "Color": [
+        120,
+        140,
+        80
+      ]
+    },
+    "Sea": {
+      "Resources": {},
+      "Monsters": [
+        "Worm",
+        "Leviathan"
+      ],
+      "Color": [
+        70,
+        100,
+        140
+      ]
+    }
+  },
+  "Items": [
+    "default_items"
+  ],
+  "Config": {
+    "WORLD_SIZE": [
+      60,
+      40
+    ],
+    "GEN_RADIUS": 4,
+    "SIZE_PARAMETER": 0.1,
+    "COASTAL_CITY_DENSITY": 0.15,
+    "INLAND_CITY_DENSITY": 0.02,
+    "MOUNTAIN_CITY_DENSITY": 0.3,
+    "MAX_PRODUCTION_CONSTANT": 1000,
+    "POPULATION_GROWTH_CONSTANT": 0.01,
+    "TRADE_THRESHOLD": 1,
+    "TRADE_VOLUME": 50,
+    "TRADE_QUANTITY": 20,
+    "PREGEN_LENGTH": 1,
+    "MAGIC_CONSUMPTION": 0.1,
+    "NOTABLE_NPC_THRESHOLD": 4,
+    "NPC_COUNT": 1000,
+    "ARMY_PARAMETER": 0.01,
+    "ARMY_SIZE": 50
+  }
+}

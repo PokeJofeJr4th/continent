@@ -1,1 +1,5 @@
 /target
+/__pycache__
+/.idea
+/reports
+/saves

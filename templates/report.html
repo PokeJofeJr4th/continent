@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>World Report</title>
+    <style>
+/* Tooltip container */
+.tooltip {
+  position: relative;
+  display: inline-block;
+  border-bottom: 1px dotted black; /* If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+  visibility: hidden;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -20px;
+  background-color: black;
+  color: #fff;
+  text-align: center;
+  padding: 5px;
+  border-radius: 6px;
+
+  /* Position the tooltip text - see examples below! */
+  position: absolute;
+  z-index: 1;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+}
+
+.tradeleft {
+     background:
+         linear-gradient(to top left,
+             rgba(255,255,255,0) 0%,
+             rgba(255,255,255,0) calc(50% - 2px),
+             rgba(255,255,255,1) 50%,
+             rgba(255,255,255,0) calc(50% + 2px),
+             rgba(255,255,255,0) 100%);
+}
+
+.traderight {
+     background:
+         linear-gradient(to top right,
+             rgba(255,255,255,0) 0%,
+             rgba(255,255,255,0) calc(50% - 2px),
+             rgba(255,255,255,1) 50%,
+             rgba(255,255,255,0) calc(50% + 2px),
+             rgba(255,255,255,0) 100%);
+}
+
+.tradevertical {
+     background:
+         linear-gradient(to right,
+             rgba(255,255,255,0) 0%,
+             rgba(255,255,255,0) calc(50% - 2px),
+             rgba(255,255,255,1) 50%,
+             rgba(255,255,255,0) calc(50% + 2px),
+             rgba(255,255,255,0) 100%);
+}
+
+.tradehorizontal {
+     background:
+         linear-gradient(to top,
+             rgba(255,255,255,0) 0%,
+             rgba(255,255,255,0) calc(50% - 2px),
+             rgba(255,255,255,1) 50%,
+             rgba(255,255,255,0) calc(50% + 2px),
+             rgba(255,255,255,0) 100%);
+}
+
+.small_chart {
+    display: inline-block;
+    width: 30%;
+}
+</style>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+// Load google charts
+google.charts.load('current', {'packages':['corechart']});
+google.charts.setOnLoadCallback(drawChart);
+
+// Draw the chart and set the chart values
+function drawChart() {
+  {% for k in CityList %}{% set c = WorldMap[k]["Structure"] %}
+  var pop_data = google.visualization.arrayToDataTable([
+  ['Year', 'Population']{% for m in c.data.keys() %},
+  ['{{ m }}', {{ c.data[m]["population"] }}]{% endfor %}]);
+
+  {% set keys = c.data["100"]["imports"].keys() %}
+  var import_data = google.visualization.arrayToDataTable([
+  ['Year'{% for k in keys %}, '{{ k }}'{% endfor %}]{% for m in c.data.keys() %},
+  ['{{ m }}'{% for k in keys %}, {{ c.data[m]['imports'][k] }}{% endfor %}]{% endfor %}]);
+
+  {% set keys = c.data["100"]["production"].keys() %}
+  var prod_data = google.visualization.arrayToDataTable([
+  ['Year'{% for k in keys %}, '{{ k }}'{% endfor %}]{% for m in c.data.keys() %},
+  ['{{ m }}'{% for k in keys %}, {{ c.data[m]['production'][k] }}{% endfor %}]{% endfor %}]);
+
+  // Set title
+  var pop_options = {'title':'City Population'};
+  var import_options = {'title':'Trade'};
+  var prod_options = {'title':'Production'};
+
+  // Display the chart
+  var pop_chart = new google.visualization.LineChart(document.getElementById('popchart_{{ k }}'));
+  pop_chart.draw(pop_data, pop_options);
+  var import_chart = new google.visualization.LineChart(document.getElementById('importchart_{{ k }}'));
+  import_chart.draw(import_data, import_options);
+  var prod_chart = new google.visualization.LineChart(document.getElementById('prodchart_{{ k }}'));
+  prod_chart.draw(prod_data, prod_options);
+{% endfor %}}
+</script>
+</head>
+<body>
+<h1>World Report</h1>
+<h2>Contents</h2>
+<ul>
+    <li><a href="#h2_Magic">Magic</a></li>
+    <li><a href="#h2_Cities">Cities</a></li>
+    <li><a href="#h2_Resources">Resources</a></li>
+    <li><a href="#h2_Regions">Regions</a></li>
+</ul>
+{{ ExportMap((0, 0), (WORLD_SIZE[0], WORLD_SIZE[1]), trade=True) }}
+<h2 id="h2_Magic">Magic</h2>
+{{ Magic['Material'][0] }}, a {{ Magic['Localization'].lower() }} {{ Magic['Material'][2].lower() }}, is used for {{ Magic['Name'] }}, the magic of this world.
+<ul>{% for ability in Magic['Abilities'] %}
+    <li>{{ MagicStr[ability['Component']] }} used for {{ MagicStr[ability['Type']] }}</li>
+    {% endfor %}</ul>
+<h2 id="h2_Cities">Cities</h2>
+{% for k in CityList %}{% set c = WorldMap[k]['Structure'] %}
+    <h3 id='city_{{ k }}'>{{ c.name }}</h3>
+    {{ ExportMap((k[0] - 5, k[1] - 5), (k[0] + 6, k[1] + 6), [k]) }}
+    <div class="small_chart" id="popchart_{{ k }}"></div>
+    <div class="small_chart" id="importchart_{{ k }}"></div>
+    <div class="small_chart" id="prodchart_{{ k }}"></div><br/>
+    {{ c.describe() }}
+    <p>{{ c.describe_culture() }}</p>
+    <p>{{ c.describe_history() }}</p>
+    <button id="tradelog_button_{{ k }}" onclick="document.getElementById('tradelog_{{ k }}').style.display = document.getElementById('tradelog_{{ k }}').style.display == 'none' ? 'block' : 'none'">
+        Trade Log
+    </button>
+    <div id="tradelog_{{ k }}" style="display:none">
+        {{ c.tradelog() }}
+    </div><br>
+    <button id="npcs_button_{{ k }}" onclick="document.getElementById('npcs_{{ k }}').style.display = document.getElementById('npcs_{{ k }}').style.display == 'none' ? 'block' : 'none'">
+        Notable NPCs
+    </button>
+    <div id="npcs_{{ k }}" style="display:none">
+        {{ c.describe_npcs() }}
+    </div><br>
+{% endfor %}
+<h2 id="h2_Resources">Resources</h2>
+{% for r in Resources %}
+    {{ ResourceSegment(r) }}
+{% endfor %}
+<h2 id="h2_Regions">Regions</h2>
+{% for r in Regions %}
+    {{ RegionSegment(r) }}
+{% endfor %}
+</body>
+</html>
