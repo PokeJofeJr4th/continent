@@ -5,6 +5,7 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use std::cmp::min;
 use std::collections::HashMap;
+use std::slice::Iter;
 use std::{fmt, fs};
 use strum::*;
 
@@ -68,12 +69,12 @@ macro_rules! usize_to_vec {
 macro_rules! terrain_char {
     ($terrain: expr) => {{
         match $terrain {
-            Terrain::Ocean => '~',     // Ocean
-            Terrain::Plain => '%',     // Plain
-            Terrain::Forest => '♣',  // Forest
-            Terrain::Mountain => 'ߍ', // Mountain
-            Terrain::Desert => '#',    // Desert
-            Terrain::Jungle => '♠',  // Jungle
+            Terrain::Ocean => '~',
+            Terrain::Plain => '%',
+            Terrain::Forest => '♣',
+            Terrain::Mountain => 'ߍ',
+            Terrain::Desert => '#',
+            Terrain::Jungle => '♠',
         }
     }};
 }
@@ -88,9 +89,9 @@ impl From<Inventory> for JsonValue {
     fn from(inventory: Inventory) -> JsonValue {
         JsonValue::from(
             inventory
-                .0
                 .iter()
-                .map(|(&index, &amount)| (format!("{}", index), amount))
+                .enumerate()
+                .map(|(index, &amount)| (format!("{}", Item::from(index)), amount))
                 .collect::<HashMap<String, f32>>(),
         )
     }
@@ -364,6 +365,8 @@ enum Item {
     Meat(Animal),
 }
 
+const ITEM_COUNT: usize = 32;
+
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -380,26 +383,49 @@ impl fmt::Display for Item {
     }
 }
 
-static mut ALL_ITEMS : Vec<Item> = Vec::new();
+impl From<Item> for usize {
+    fn from(value: Item) -> Self {
+        unsafe { ALL_ITEMS.iter().position(|&m| m == value) }.unwrap()
+    }
+}
 
-#[derive(Debug, Clone, Default)]
-struct Inventory(HashMap<Item, f32>);
+impl From<usize> for Item {
+    fn from(value: usize) -> Self {
+        assert!(value < ITEM_COUNT);
+        unsafe { ALL_ITEMS[value] }
+    }
+}
+
+static mut ALL_ITEMS: Vec<Item> = Vec::new();
+
+#[derive(Debug, Clone)]
+struct Inventory(Vec<f32>);
+
+impl Default for Inventory {
+    fn default() -> Self {
+        Inventory(vec![0.0; ITEM_COUNT])
+    }
+}
 
 impl Inventory {
-    fn get(&self, i: Item) -> f32 {
-        let result = self.0.get(&i);
+    fn get(&self, i: usize) -> f32 {
+        let result = self.0.get(i);
         match result {
             None => 0.0,
             Some(&res) => res,
         }
     }
 
-    fn set(&mut self, i: Item, v: f32) {
-        self.0.insert(i, v);
+    fn set(&mut self, i: usize, v: f32) {
+        self.0[i] = v;
     }
 
-    fn add(&mut self, i: Item, v: f32) {
-        self.0.insert(i, self.get(i) + v);
+    fn add(&mut self, i: usize, v: f32) {
+        self.set(i, self.get(i) + v);
+    }
+
+    fn iter(&self) -> Iter<'_, f32> {
+        self.0.iter()
     }
 }
 
@@ -486,16 +512,16 @@ impl City<'_> {
         }
         // Produce resources and calculate food
         let mut total_food_resources = 0.0;
-        for (&item, &amount) in self.resources.clone().0.iter() {
+        for item in 0..ITEM_COUNT {
             let production = inverse_add!(
                 (self.population as f32 * 2.0),
-                (amount * CONFIG.production_constant)
+                (self.resources.get(item) * CONFIG.production_constant)
             )
             .floor();
             self.resources.add(item, production);
             self.production.add(item, production);
-            // Deplete non-renewable resources
-            match item {
+            // Deplete non-renewable resources and track food resources
+            match item.into() {
                 Item::Metal(_) => self.resource_gathering.add(item, -0.001 * production),
                 Item::Gem(_) => self.resource_gathering.add(item, -0.001 * production),
                 Item::Plant(_) | Item::Fish | Item::Meat(_) => {
@@ -504,66 +530,63 @@ impl City<'_> {
                 _ => (),
             }
         }
-        let demand: HashMap<Item, f32> = self
+        let demand: Vec<f32> = self
             .resources
-            .0
             .iter()
-            .map(|(&item, &amount)| {
-                (item, {
-                    {
-                        let mut demand = 0.0;
-                        match item {
-                            Item::Plant(_) | Item::Fish => {
-                                demand += (self.population as f32) * amount / total_food_resources
-                            }
-                            _ => {}
-                        }
-                        demand
+            .enumerate()
+            .map(|(item, &amount)| {
+                let mut demand = 0.0;
+                match item.into() {
+                    Item::Plant(_) | Item::Fish => {
+                        demand += (self.population as f32) * amount / total_food_resources
                     }
-                })
+                    _ => {}
+                }
+                demand
             })
             .collect();
         self.economy = Inventory(
             demand
                 .iter()
-                .map(|(&item, &amount)| {
-                    (item, {
-                        {
-                            let mut price: f32 = 1.0;
-                            match item {
-                                Item::MetalGood(_) => price *= 4.0,
-                                Item::CutGem(_) => price *= 10.0,
-                                Item::TameAnimal(_) => price *= 5.0,
-                                _ => (),
-                            }
-                            let exp: f32 = amount / {
-                                if self.population as i64 == amount as i64 {
-                                    1.0
-                                } else {
-                                    self.population as f32 - amount
-                                }
-                            };
-                            price * 1.1f32.powf(exp)
+                .enumerate()
+                .map(|(item, &amount)| {
+                    let price: f32 = match item.into() {
+                        Item::MetalGood(_) => 4.0,
+                        Item::CutGem(_) => 10.0,
+                        Item::TameAnimal(_) => 5.0,
+                        Item::Meat(_) => 2.0,
+                        _ => 1.0,
+                    };
+                    let exp: f32 = amount / {
+                        if self.population as i64 == amount as i64 {
+                            1.0
+                        } else {
+                            self.population as f32 - amount
                         }
-                    })
+                    };
+                    price * 1.1f32.powf(exp)
                 })
                 .collect(),
         );
         self.resources = Inventory(
             self.resources
-                .0
                 .iter()
-                .map(|(&item, &amount)| (item, (amount - demand[&item]).clamp(0.0, f32::MAX)))
+                .enumerate()
+                .map(|(item, &amount)| (amount - demand[item]).clamp(0.0, f32::MAX))
                 .collect(),
         );
         let net_food = total_food_resources - self.population as f32;
-        self.population += (net_food * CONFIG.population_constant).floor() as i64 as i32;
-        if rng.gen::<f32>()
-            < (net_food * CONFIG.population_constant)
-                - (net_food * CONFIG.population_constant).floor()
-        {
-            self.population += 1;
-        }
+
+        self.population += {
+            let diff = net_food * CONFIG.population_constant;
+            diff.floor() as i32 + {
+                if rng.gen::<f32>() < (diff - diff.floor()) {
+                    1
+                } else {
+                    0
+                }
+            }
+        };
 
         // Tick all living NPCs
         // IMPORTANT: During the loop, the city's npcs list is empty
@@ -747,6 +770,29 @@ fn get_markov_data(strings: &[&str]) -> MarkovData {
 }
 
 fn main() {
+    unsafe {
+        // This is safe because nothing's accessing it yet
+        ALL_ITEMS.push(Item::Fish);
+        for plant in Plant::iter() {
+            ALL_ITEMS.push(Item::Plant(plant));
+        }
+        for metal in Metal::iter() {
+            ALL_ITEMS.push(Item::Metal(metal));
+            ALL_ITEMS.push(Item::MetalGood(metal));
+        }
+        for gem in Gem::iter() {
+            ALL_ITEMS.push(Item::Gem(gem));
+            ALL_ITEMS.push(Item::CutGem(gem));
+        }
+        for animal in Animal::iter() {
+            ALL_ITEMS.push(Item::WildAnimal(animal));
+            ALL_ITEMS.push(Item::TameAnimal(animal));
+            ALL_ITEMS.push(Item::Meat(animal));
+        }
+        assert_eq!(ALL_ITEMS.len(), ITEM_COUNT);
+        // println!("{ITEM_COUNT}");
+    }
+
     let mut rng = thread_rng();
     let markov_data_city: MarkovData = get_markov_data(&[
         "akron;",
@@ -807,7 +853,7 @@ fn main() {
         &markov_data_city,
         &markov_data_person,
     );
-    println!("{trade_connections:?}");
+    // println!("{trade_connections:?}");
     let trade_connections_list: Vec<(usize, usize)> =
         trade_connections.iter().map(|(&k, _v)| k).collect();
     // println!("Region Map: {:?}\nRegion List: {:?}", region_map, region_list);
@@ -1000,10 +1046,7 @@ fn random_region(
     };
     let resources = {
         let (metal, gem, plant, animal) = match terrain {
-            Terrain::Plain => {
-                // Plain
-                (0.2, 0.1, 0.4, 0.9)
-            }
+            Terrain::Plain => (0.2, 0.1, 0.4, 0.9),
             Terrain::Forest => (0.1, 0.2, 0.9, 0.4),
             Terrain::Mountain => (0.9, 0.4, 0.2, 0.1),
             Terrain::Desert => (0.4, 0.9, 0.1, 0.2),
@@ -1029,7 +1072,7 @@ fn random_region(
         run_type!(gem, Item::Gem, Gem::iter());
         run_type!(plant, Item::Plant, Plant::iter());
         run_type!(animal, Item::WildAnimal, Animal::iter());
-        resources.set(Item::Fish, rng.gen::<f32>() * 2.0);
+        resources.set(Item::Fish.into(), rng.gen::<f32>() * 2.0);
         resources
     };
     Region {
@@ -1103,9 +1146,9 @@ fn generate_cities<'a>(
                         resource_gathering: Inventory(
                             region_list[region_map[pos]]
                                 .resources
-                                .0
                                 .iter()
-                                .map(|(&item, &val)| (item, val + rng.gen::<f32>() * 0.1))
+                                .enumerate()
+                                .map(|(_, &val)| val + rng.gen::<f32>() * 0.1)
                                 .collect(),
                         ),
                         data: HashMap::new(),
@@ -1140,27 +1183,34 @@ fn handle_trade(
     let first_city = city_list.get(&route.0)?;
     let second_city = city_list.get(&route.1)?;
 
-    let trade_deficit: HashMap<Item, f32> = first_city
-        .economy
-        .0
-        .iter()
-        .map(|(&item, &demand)| (item, demand - second_city.economy.get(item)))
-        .collect();
+    let (first_city_supply, second_city_supply): (Vec<f32>, Vec<f32>) = {
+        (0..ITEM_COUNT)
+        .map(|item| {
+            (
+                second_city.economy.get(item) * CONFIG.trade_volume / first_city.economy.get(item),
+                first_city.economy.get(item) * CONFIG.trade_volume / second_city.economy.get(item),
+            )
+        })
+        .unzip()
+    };
 
     let first_resource = {
-        let tup = trade_deficit
+        let tup = first_city_supply
             .iter()
-            .max_by_key(|(_, &amount)| amount as i64)?;
-        (*tup.0, *tup.1)
+            .enumerate()
+            .min_by_key(|(_, &amount)| amount as i64)?;
+        (tup.0, tup.1.floor())
     };
     let second_resource = {
-        let tup = trade_deficit
+        let tup = second_city_supply
             .iter()
+            .enumerate()
             .min_by_key(|(_, &amount)| amount as i64)?;
-        (*tup.0, *tup.1)
+        (tup.0, *tup.1)
     };
 
-    // mutable references to update the cities' contents. They have to be like this because you can't have two mutable references at the same time
+    // mutable references to update the cities' contents. 
+    // They have to be like this because you can't have two mutable references at the same time
     let first_city = city_list.get_mut(&route.0)?;
     first_city.resources.add(first_resource.0, first_resource.1);
     first_city.imports.add(first_resource.0, first_resource.1);
