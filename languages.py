@@ -107,7 +107,8 @@ def evolve(lang):
         elif re.search(f"{vowel}{nasal}{vowel}{plosive}{vowel}", w):
             def iterate(word):  # anapa => anpa
                 while True:
-                    m = re.search(f"{vowel}{nasal}{vowel}{plosive}{vowel}", word)
+                    m = re.search(
+                        f"{vowel}{nasal}{vowel}{plosive}{vowel}", word)
                     if m is None:
                         break
                     word = word[:m.span()[0] + 2] + word[m.span()[0] + 3:]
@@ -123,7 +124,8 @@ def evolve(lang):
         elif re.search(f"{vowel}{plosive}{vowel}{plosive}{vowel}", w):
             def iterate(word):  # arapa => arpa
                 while True:
-                    m = re.search(f"{vowel}{plosive}{vowel}{plosive}{vowel}", word)
+                    m = re.search(
+                        f"{vowel}{plosive}{vowel}{plosive}{vowel}", word)
                     if m is None:
                         break
                     word = word[:m.span()[0] + 2] + word[m.span()[0] + 3:]
@@ -151,7 +153,8 @@ def evolve(lang):
                     m = re.search("m[tdsz]", word)
                     if m is None:
                         break
-                    word = word[:m.span()[0] + 1] + "n" + word[m.span()[0] + 2:]
+                    word = word[:m.span()[0] + 1] + "n" + \
+                        word[m.span()[0] + 2:]
                 return word
         elif re.search(f"{vowel}{unvoiced}{vowel}", w):
             def iterate(word):  # arapa => araba
@@ -160,8 +163,8 @@ def evolve(lang):
                     if m is None:
                         break
                     word = word[:m.span()[0] + 1] + {"p": "b", "t": "d", "k": "g",
-                                                 "f": "v", "s": "z", "x": "G"}[word[m.span()[0] + 1]] + word[m.span()[
-                                                                                                                 0] + 2:]
+                                                     "f": "v", "s": "z", "x": "G"}[word[m.span()[0] + 1]] + word[m.span()[
+                                                         0] + 2:]
                 return word
         elif re.search(f"{vowel}[Gx]{cons}", w):
             if random.random() < 0.25:
@@ -180,7 +183,8 @@ def evolve(lang):
                         m = re.search(f"{vowel}[Gx]{cons}", word)
                         if m is None:
                             break
-                        word = word[:m.span()[0] + 1] + letter + word[m.span()[0] + 2:]
+                        word = word[:m.span()[0] + 1] + letter + \
+                            word[m.span()[0] + 2:]
                     return word
             else:
                 def iterate(word):  # axka => aka
@@ -208,7 +212,8 @@ def evolve(lang):
 
 
 if __name__ == "__main__":
-    init({"Metal": ["Steel", "Iron", "Copper", "Gold"], "Plant": ["Tree", "Fruit"]})
+    init({"Metal": ["Steel", "Iron", "Copper", "Gold"],
+         "Plant": ["Tree", "Fruit"]})
     proto = protolang()
     proto2 = copy.deepcopy(proto)
     print(proto.values())

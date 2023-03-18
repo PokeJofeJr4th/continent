@@ -14,15 +14,18 @@ def generate_magic():
     if random.random() < 1:  # Resource-based
         localization = "ubiquitous"
         r_i = random.randint(0, 4)
-        rarity = ["extremely rare", "very rare", "rare", "common", "very common"][r_i]
+        rarity = ["extremely rare", "very rare",
+                  "rare", "common", "very common"][r_i]
         if random.random() < 0.6:
             localization = "localized"
         MagMatType = random.choice(["Metal", "Plant", "Gemstone"])
         MagicMaterial = names.generate(MagMatType)
         if MagMatType in ["Metal", "Gemstone"]:
-            MagMatProps = (1 if localization == "ubiquitous" else 6, 2 + r_i, 9)
+            MagMatProps = (1 if localization ==
+                           "ubiquitous" else 6, 2 + r_i, 9)
         elif MagMatType == "Plant":
-            MagMatProps = ((4 if localization == "ubiquitous" else 10) - r_i, 1, 9)
+            MagMatProps = (
+                (4 if localization == "ubiquitous" else 10) - r_i, 1, 9)
         print(f"Magic comes from " + MagicMaterial + f", a {localization} " +
               ("but" if localization == "ubiquitous" and r_i <= 2 else "and") + f" {rarity} " +
               MagMatType +
@@ -50,7 +53,8 @@ def generate_magic():
         print("There are items that can store magical power for later use.")
     # EFFECTS
     effect_num = random.randint(4, 10)
-    print(f"There are {effect_num} different magical effects that can be produced:")
+    print(
+        f"There are {effect_num} different magical effects that can be produced:")
     for n in range(1, effect_num + 1):
         effect_type = random.randint(0, 4)
         if effect_type == 0:  # Buff/Debuff
@@ -68,7 +72,7 @@ def generate_magic():
         elif effect_type == 2:  # Psychic
             print(f"\t{n}. " + random.choice(
                 ["Influence the emotions of", "Create an illusion for", "Control the actions of"]) + " " +
-                  random.choice(["anyone you touch.", "anyone you can see.", "anyone near you"]))
+                random.choice(["anyone you touch.", "anyone you can see.", "anyone near you"]))
         elif effect_type == 3:  # Metamagic
             print(f"\t{n}. " + random.choice(["Prevent", "Weaken", "Strengthen", "Detect"]) + " magic from " +
                   random.choice(["anyone", "anyone you can see", "anyone you touch", "anyone near you"]) +

@@ -8,7 +8,8 @@ import sim
 
 
 def dejsonize_npc(npc):
-    npc_return = sim.NPC(npc["race"], npc["name"], tuple(npc["origin"]), npc["birth"], npc["title"])
+    npc_return = sim.NPC(npc["race"], npc["name"], tuple(
+        npc["origin"]), npc["birth"], npc["title"])
     npc_return.pos = tuple(npc["pos"])
     for attr_key in ["inventory", "skills", "alive", "reputation", "age"]:
         setattr(npc_return, attr_key, npc[attr_key])
@@ -27,7 +28,8 @@ def dejsonize_city(c):
     keylist.sort()
     city_return.data = {str(k): c["data"][str(k)] for k in keylist}
     city_return.npcs = [dejsonize_npc(npc) for npc in c["NPCs"]]
-    city_return.history = [*(sim.CityEvent(city_return, e["Time"], e["Desc"]) for e in c["history"])]
+    city_return.history = [
+        *(sim.CityEvent(city_return, e["Time"], e["Desc"]) for e in c["history"])]
     return city_return
 
 
@@ -81,7 +83,8 @@ def main(argv):
                         if len(split) == 2:
                             item_type = split[0]
                             name = split[1].strip()
-                            data = tuple(float(i) for i in next(line_iter).split(","))
+                            data = tuple(float(i)
+                                         for i in next(line_iter).split(","))
                             sim.Goods[name] = data
                             sim.AllItems.append(name)
                             if item_type == "animal":
@@ -138,7 +141,8 @@ def main(argv):
         if "Magic" in jsondict.keys():
             sim.Magic = jsondict["Magic"]
         if "RegionList" in jsondict.keys():
-            sim.RegionList = [sim.Region(terrain=r["terrain"]) for r in jsondict["RegionList"]]
+            sim.RegionList = [sim.Region(terrain=r["terrain"])
+                              for r in jsondict["RegionList"]]
             sim.RegionMap = jsondict["RegionMap"]
             for i, r in enumerate(jsondict["RegionList"]):
                 sim.RegionList[i].tiles = r["tiles"]

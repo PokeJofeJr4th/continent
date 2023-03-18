@@ -94,7 +94,8 @@ def generate(type, start=None, max_length=12, min_length=6):
         while len(s) < max_length:
             options = []
             if s[-order:] in data_tables[type].keys():
-                options = [*options, *data_tables[type][s[-order:]], *data_tables[type][s[-order:]], *data_tables[type][s[-order:]], *data_tables[type][s[-order:]], *data_tables[type][s[-order:]]]
+                options = [*options, *data_tables[type][s[-order:]], *data_tables[type][s[-order:]], *
+                           data_tables[type][s[-order:]], *data_tables[type][s[-order:]], *data_tables[type][s[-order:]]]
             if s[-order:] in data_tables["Human"].keys():
                 options = [*options, *data_tables["Human"][s[-order:]]]
             s += random.choice(options)

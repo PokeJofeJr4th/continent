@@ -58,40 +58,40 @@ def custom_biomes(parameters, stack):
     change_direction = 0
     toggle = False
     for event in pygame.event.get():
-        if event.type == QUIT:
+        if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-        elif event.type == KEYDOWN:
-            if event.key == K_ESCAPE:
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
                 cursor = 0
                 return False
-            elif event.key == K_RETURN:
+            elif event.key == pygame.K_RETURN:
                 cursor = 0
                 while True:
                     success = stack[0](parameters, stack[1:])
                     if not success:
                         break
-            elif event.key == K_UP:
+            elif event.key == pygame.K_UP:
                 cursor -= 1
                 if cursor % 12 == 11:
                     cursor += 12
-            elif event.key == K_DOWN:
+            elif event.key == pygame.K_DOWN:
                 cursor += 1
                 if cursor % 12 == 0:
                     cursor -= 12
-            elif event.key == K_LEFT:
+            elif event.key == pygame.K_LEFT:
                 cursor -= 12
                 if math.floor(cursor / 12) < 0:
                     cursor = 12 * len(parameters["Biomes"]) - 12
-            elif event.key == K_RIGHT:
+            elif event.key == pygame.K_RIGHT:
                 cursor += 12
                 if math.floor(cursor / 12) >= len(parameters["Biomes"]):
                     cursor = 0
-            elif event.key == K_KP_PLUS:
+            elif event.key == pygame.K_KP_PLUS:
                 change_direction = 1
-            elif event.key == K_KP_MINUS:
+            elif event.key == pygame.K_KP_MINUS:
                 change_direction = -1
-            elif event.key == K_t:
+            elif event.key == pygame.K_t:
                 toggle = True
     Display.fill((0, 0, 0))
     blit_txt("Custom Generation", 50, 10, Display)
@@ -154,28 +154,28 @@ def custom_items(parameters, stack):
     for _, _, files_ in os.walk("objects"):
         object_files = [*(file_[:-4] for file_ in files_)]
     for event in pygame.event.get():
-        if event.type == QUIT:
+        if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-        elif event.type == KEYDOWN:
-            if event.key == K_ESCAPE:
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
                 cursor = 0
                 return False
-            elif event.key == K_RETURN:
+            elif event.key == pygame.K_RETURN:
                 cursor = 0
                 while True:
                     success = stack[0](parameters, stack[1:])
                     if not success:
                         break
-            elif event.key == K_UP:
+            elif event.key == pygame.K_UP:
                 cursor -= 1
                 if cursor < 0:
                     cursor += len(object_files)
-            elif event.key == K_DOWN:
+            elif event.key == pygame.K_DOWN:
                 cursor += 1
                 if cursor >= len(object_files):
                     cursor -= len(object_files)
-            elif event.key == K_t:
+            elif event.key == pygame.K_t:
                 toggle = True
     Display.fill((0, 0, 0))
     blit_txt("Custom Generation", 50, 10, Display)
@@ -201,26 +201,26 @@ def custom_generation_parameters(parameters, stack):
     global cursor
     change_direction = 0
     for event in pygame.event.get():
-        if event.type == QUIT:
+        if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-        elif event.type == KEYDOWN:
-            if event.key == K_ESCAPE:
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
                 cursor = 0
                 return False
-            elif event.key == K_UP:
+            elif event.key == pygame.K_UP:
                 cursor -= 1
                 if cursor == -1:
                     cursor = len(parameters["Config"].keys())
-            elif event.key == K_DOWN:
+            elif event.key == pygame.K_DOWN:
                 cursor += 1
                 if cursor == len(parameters["Config"].keys()) + 1:
                     cursor = 0
-            elif event.key == K_KP_PLUS:
+            elif event.key == pygame.K_KP_PLUS:
                 change_direction = 1
-            elif event.key == K_KP_MINUS:
+            elif event.key == pygame.K_KP_MINUS:
                 change_direction = -1
-            elif event.key == K_RETURN:
+            elif event.key == pygame.K_RETURN:
                 cursor = 0
                 while True:
                     success = stack[0](parameters, stack[1:])
@@ -283,28 +283,28 @@ def build_world(parameters, stack):
         parameters["RegionList"] = [*(None for _ in range(Regions+1))]
 
     for event in pygame.event.get():
-        if event.type == QUIT:
+        if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-        elif event.type == KEYDOWN:
-            if event.key == K_ESCAPE:
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_ESCAPE:
                 cursor = 0
                 return False
-            elif event.key == K_LEFT:
+            elif event.key == pygame.K_LEFT:
                 cursor -= 1
                 if cursor < 0:
                     cursor += 1
-            elif event.key == K_RIGHT:
+            elif event.key == pygame.K_RIGHT:
                 cursor += 1
                 if cursor >= len(parameters["Biomes"]):
                     cursor -= 1
-            elif event.key == K_RETURN:
+            elif event.key == pygame.K_RETURN:
                 cursor = 0
                 while True:
                     success = stack[0](parameters, stack[1:])
                     if not success:
                         break
-        elif event.type == MOUSEBUTTONDOWN:
+        elif event.type == pygame.MOUSEBUTTONDOWN:
             parameters["RegionList"][current_region] = {"terrain": [
                 *parameters["Biomes"].keys()][cursor], "tiles": []}
             for k, r in parameters["RegionMap"].items():
@@ -348,26 +348,26 @@ def go_to_main(parameters, stack):
 def update_screen():
     global cursor, report, pregen
     for event in pygame.event.get():
-        if event.type == QUIT:
+        if event.type == pygame.QUIT:
             pygame.quit()
             sys.exit()
-        elif event.type == KEYDOWN:
-            if event.key == K_UP:
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_UP:
                 cursor -= 1
                 if cursor == -1:
                     cursor = len(options) - 1
-            elif event.key == K_DOWN:
+            elif event.key == pygame.K_DOWN:
                 cursor += 1
                 if cursor == len(options):
                     cursor = 0
-            elif event.key == K_KP_MINUS:
+            elif event.key == pygame.K_KP_MINUS:
                 if pregen != 0:
                     pregen -= 1
-            elif event.key == K_KP_PLUS:
+            elif event.key == pygame.K_KP_PLUS:
                 pregen += 1
-            elif event.key == K_r:
+            elif event.key == pygame.K_r:
                 report = not report
-            elif event.key == K_c:
+            elif event.key == pygame.K_c:
                 parameters = copy.deepcopy(jsondata[cursor])
                 if jsondata[cursor]["file_type"] == "save":
                     for k in ["RegionList", "CityList", "trade_connections", "current_year", "Magic"]:
@@ -382,7 +382,7 @@ def update_screen():
                     success = stack[0](parameters, stack[1:])
                     if not success:
                         break
-            elif event.key == K_RETURN:
+            elif event.key == pygame.K_RETURN:
                 pygame.quit()
                 import main
                 argv = ["launcher", filenames[cursor][:-5]]

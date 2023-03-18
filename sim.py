@@ -876,7 +876,7 @@ def blit_txt(txt, x, y, display, text_color=(255, 255, 255), maxlength=0):
 def update_screen():
     global current_year
     for event in pygame.event.get():
-        if event.type == QUIT:
+        if event.type == pygame.QUIT:
             pygame.quit()
             export_report()
             sys.exit()
