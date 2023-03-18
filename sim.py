@@ -1329,7 +1329,7 @@ def export_report():
     environment = Environment(loader=FileSystemLoader("templates/"))
     results_filename = f"reports/{Magic['Material'][0]}_{Magic['Name']}_{current_year}.html"
 
-    with open(f"json_data/{Magic['Material'][0]}_{Magic['Name']}_{current_year}.json", "w") as json_dump:
+    with open(f"saves/{Magic['Material'][0]}_{Magic['Name']}_{current_year}.json", "w") as json_dump:
         json_dump.write(json.dumps(jsonize()))
 
     results_template = environment.get_template("report.html")

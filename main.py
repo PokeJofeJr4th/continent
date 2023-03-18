@@ -64,7 +64,7 @@ def main(argv):
             sys.exit()
     jsondict = patharg
     if isinstance(patharg, str):
-        jsondict = extract_json(f"json_data/{patharg}.json")
+        jsondict = extract_json(f"{patharg}.json")
     sim.Biomes = jsondict["Biomes"]
     print({k: "#" + hex(sum(i * (256 ** (2 - ii)) for ii, i in enumerate(v["Color"])))[2:] for k, v in
            sim.Biomes.items()})

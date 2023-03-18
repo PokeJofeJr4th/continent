@@ -1,5 +1,6 @@
 # presents file choices and allows custom generation
 
+import itertools
 import math
 import os
 import json
@@ -30,7 +31,8 @@ def blit_txt(txt, x, y, display, text_color=(255, 255, 255), maxlength=0):
         text = txt.split("\n")
         y_ = 0
         for n in range(len(text)):
-            y_ += blit_txt(text[n], x, y + y_ * 20, display, text_color=text_color, maxlength=maxlength)
+            y_ += blit_txt(text[n], x, y + y_ * 20, display,
+                           text_color=text_color, maxlength=maxlength)
         return y_
     if maxlength == 0:
         render = font.render(txt, False, (*text_color, 255))
@@ -96,7 +98,8 @@ def custom_biomes(parameters, stack):
     blit_txt("[Esc] Back", 400, 20, Display)
     blit_txt("[Enter] Continue", 400, 45, Display)
     i = 0
-    i += blit_txt([*parameters["Biomes"].keys()][math.floor(cursor / 12)], 50, i * 22 + 80, Display, maxlength=60)
+    i += blit_txt([*parameters["Biomes"].keys()][math.floor(cursor / 12)],
+                  50, i * 22 + 80, Display, maxlength=60)
     r = [*parameters["Biomes"].values()][math.floor(cursor / 12)]
     if r["Resources"] == {}:
         i += blit_txt("No Resources", 50, i * 22 + 80, Display, maxlength=60)
@@ -106,14 +109,15 @@ def custom_biomes(parameters, stack):
             if cursor % 12 == ii:
                 blit_txt("[+/-] 0.1", 500, i * 22 + 80, Display)
                 k = [*r["Resources"].keys()][ii]
-                r["Resources"][k] = round(r["Resources"][k] + change_direction * 0.1, 2)
+                r["Resources"][k] = round(
+                    r["Resources"][k] + change_direction * 0.1, 2)
                 if r["Resources"][k] < 0:
                     r["Resources"][k] = 0
                 if r["Resources"][k] > 1:
                     r["Resources"][k] = 1
             i += blit_txt(("  >" if cursor % 12 == ii else "   ") + [*r["Resources"].keys()][ii] + ": " + str(
                 [*r["Resources"].values()][ii]), 50, i * 22 + 80,
-                          Display, maxlength=60)
+                Display, maxlength=60)
     for ii, m in enumerate(["Beast", "Dragon", "Leviathan", "Worm"]):
         if cursor % 12 == ii + 5:
             blit_txt("[t] Toggle", 500, i * 22 + 80, Display)
@@ -125,7 +129,8 @@ def custom_biomes(parameters, stack):
         i += blit_txt((">" if cursor % 12 == ii + 5 else " ") + m, 50, i * 22 + 80,
                       Display, maxlength=60, text_color=((128, 255, 128) if m in r["Monsters"] else (255, 128, 128)))
     i += blit_txt("Color:", 50, i * 22 + 80, Display, maxlength=60)
-    i += blit_txt("██████████", 50, i * 22 + 80, Display, maxlength=60, text_color=r["Color"])
+    i += blit_txt("██████████", 50, i * 22 + 80, Display,
+                  maxlength=60, text_color=r["Color"])
     for ii in range(3):
         if cursor % 12 == ii + 9:
             blit_txt("[+/-] 5", 500, i * 22 + 80, Display)
@@ -229,7 +234,8 @@ def custom_generation_parameters(parameters, stack):
     ii = -1
     for o in [*(parameters["Config"].keys())]:
         if o == "WORLD_SIZE":
-            i += blit_txt(" WORLD_SIZE:", 30, i * 22 + 60, Display, maxlength=60)
+            i += blit_txt(" WORLD_SIZE:", 30, i * 22 +
+                          60, Display, maxlength=60)
             ii += 1
             if cursor == ii:
                 blit_txt("[+/-] 10", 500, i * 22 + 60, Display)
@@ -250,7 +256,8 @@ def custom_generation_parameters(parameters, stack):
                                "MAX_PRODUCTION_CONSTANT": 100, "POPULATION_GROWTH_CONSTANT": 0.01,
                                "TRADE_THRESHOLD": 1, "TRADE_VOLUME": 10, "TRADE_QUANTITY": 5, "PREGEN_LENGTH": 1,
                                "MAGIC_CONSUMPTION": 0.01, "NOTABLE_NPC_THRESHOLD": 1, "NPC_COUNT": 100, "ARMY_SIZE": 10, "ARMY_PARAMETER": 0.001}[o]
-            blit_txt("[+/-] " + repr(change_quantity), 500, i * 22 + 60, Display)
+            blit_txt("[+/-] " + repr(change_quantity),
+                     500, i * 22 + 60, Display)
             parameters["Config"][o] += change_direction * change_quantity
             parameters["Config"][o] = round(parameters["Config"][o], 4)
         i += blit_txt((">" if cursor == ii else " ") + o + ": " + repr(parameters["Config"][o]), 30, i * 22 + 60,
@@ -271,7 +278,8 @@ def build_world(parameters, stack):
             current_region = parameters["RegionMap"][(m_x, m_y)]
     else:
         from sim import build_region_map
-        _, parameters["RegionMap"], Regions, _ = build_region_map(parameters["Config"])
+        _, parameters["RegionMap"], Regions, _ = build_region_map(
+            parameters["Config"])
         parameters["RegionList"] = [*(None for _ in range(Regions+1))]
 
     for event in pygame.event.get():
@@ -297,7 +305,8 @@ def build_world(parameters, stack):
                     if not success:
                         break
         elif event.type == MOUSEBUTTONDOWN:
-            parameters["RegionList"][current_region] = {"terrain": [*parameters["Biomes"].keys()][cursor], "tiles": []}
+            parameters["RegionList"][current_region] = {"terrain": [
+                *parameters["Biomes"].keys()][cursor], "tiles": []}
             for k, r in parameters["RegionMap"].items():
                 if r == current_region:
                     parameters["RegionList"][current_region]["tiles"].append(k)
@@ -308,7 +317,8 @@ def build_world(parameters, stack):
         yy = k[1] * 10 + 20
         tile_color = (24, 24, 24)
         if parameters["RegionList"][r]:
-            tile_color = parameters["Biomes"][parameters["RegionList"][r]["terrain"]]["Color"]
+            tile_color = parameters["Biomes"][parameters["RegionList"]
+                                              [r]["terrain"]]["Color"]
         elif (k[0] + k[1]) % 2 == 1:
             tile_color = (96, 96, 96)
         if r == current_region:
@@ -363,7 +373,8 @@ def update_screen():
                     for k in ["RegionList", "CityList", "trade_connections", "current_year", "Magic"]:
                         del parameters[k]
                     parameters["file_type"] = "gen"
-                stack = [custom_generation_parameters, custom_biomes, build_world, custom_items, go_to_main]
+                stack = [custom_generation_parameters, custom_biomes,
+                         build_world, custom_items, go_to_main]
                 if jsondata[cursor]["file_type"] == "save":
                     stack.remove(custom_items)
                 cursor = 0
@@ -417,29 +428,33 @@ def update_screen():
         for y in range(jsondata[cursor]["Config"]["WORLD_SIZE"][1]):
             yy = 80 + y * 3
             if (x, y) in terrain_colors.keys():
-                pygame.draw.rect(Display, terrain_colors[(x, y)], (xx, yy, 3, 3))
+                pygame.draw.rect(
+                    Display, terrain_colors[(x, y)], (xx, yy, 3, 3))
             else:
                 pygame.draw.rect(Display, oceanColor, (xx, yy, 3, 3))
     for ii, o in enumerate(options):
-        i += blit_txt((">" if cursor == ii else " ") + o, 30, i * 22 + 280, Display, maxlength=60)
+        i += blit_txt((">" if cursor == ii else " ") + o, 30,
+                      i * 22 + 280, Display, maxlength=60)
     pygame.display.update()
 
 
 if __name__ == '__main__':
     compile.main()
-    for root, dirs, files in os.walk("json_data"):
+    for root, dirs, files in itertools.chain(os.walk("json_data"), os.walk("saves")):
         for file in files:
             if not file.endswith(".json"):
                 continue
-            with open(f"json_data/{file}") as f:
+            with open(f"{root}/{file}") as f:
                 j = json.loads(f.read())
                 if j["file_type"] == "gen":
-                    filenames.insert(0, file)
+                    filenames.insert(0, f"{root}/{file}")
                     jsondata.insert(0, j)
-                    options.insert(0, f"{file}: generate a world with size {j['Config']['WORLD_SIZE']}")
+                    options.insert(
+                        0, f"{root}/{file}: generate a world with size {j['Config']['WORLD_SIZE']}")
                 else:
-                    filenames.append(file)
+                    filenames.append(f"{root}/{file}")
                     jsondata.append(j)
-                    options.append(f"load {j['Magic']['Material'][0]} {j['Magic']['Name']} in Y{j['current_year']}")
+                    options.append(
+                        f"load {j['Magic']['Material'][0]} {j['Magic']['Name']} in Y{j['current_year']}")
     while True:
         update_screen()
