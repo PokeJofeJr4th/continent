@@ -1,4 +1,4 @@
-# sim.py is the main code for the game
+# sim.py is the main code for the game. DO NOT EDIT
 # sim_template.py is the Jinja template form
 
 import pygame
@@ -1465,7 +1465,7 @@ def pregen(pregen_length):
             blit_txt(txt, 250, 400, Display, maxlength=42)
             pygame.display.update((250, 400, 500, 500))
         for event in pygame.event.get():
-            if event.type == QUIT:
+            if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit()
         for _ in range(pregen_length):

@@ -340,7 +340,6 @@ def go_to_main(parameters, stack):
         argv.append("R")
     if pregen > 0:
         argv.append(f"P{pregen}")
-    print(argv)
     main.main(argv)
     sys.exit()
 
@@ -390,7 +389,6 @@ def update_screen():
                     argv.append("R")
                 if pregen > 0:
                     argv.append(f"P{pregen}")
-                print(argv)
                 main.main(argv)
                 sys.exit()
     Display.fill((0, 0, 0))
@@ -417,8 +415,6 @@ def update_screen():
     else:
         blit_txt("[c] Copy generation parameters", 400, 45, Display)
         for r in jsondata[cursor]["RegionList"]:
-            print(r)
-            print(r["terrain"])
             terColor = jsondata[cursor]["Biomes"][r["terrain"]]["Color"]
             for t in r["tiles"]:
                 terrain_colors[tuple(t)] = terColor

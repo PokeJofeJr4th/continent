@@ -309,11 +309,11 @@ enum Plant {
     Pumpkin,
 }
 
-impl Default for Plant {
-    fn default() -> Self {
-        Plant::Apple
-    }
-}
+// impl Default for Plant {
+//     fn default() -> Self {
+//         Plant::Apple
+//     }
+// }
 
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Metal {
@@ -323,11 +323,11 @@ enum Metal {
     Silver,
 }
 
-impl Default for Metal {
-    fn default() -> Self {
-        Metal::Iron
-    }
-}
+// impl Default for Metal {
+//     fn default() -> Self {
+//         Metal::Iron
+//     }
+// }
 
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Gem {
@@ -337,11 +337,11 @@ enum Gem {
     Agate,
 }
 
-impl Default for Gem {
-    fn default() -> Self {
-        Gem::Diamond
-    }
-}
+// impl Default for Gem {
+//     fn default() -> Self {
+//         Gem::Diamond
+//     }
+// }
 
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Animal {
@@ -351,13 +351,13 @@ enum Animal {
     Wolf,
 }
 
-impl Default for Animal {
-    fn default() -> Self {
-        Animal::Deer
-    }
-}
+// impl Default for Animal {
+//     fn default() -> Self {
+//         Animal::Deer
+//     }
+// }
 
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq, EnumIter)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 enum Item {
     Fish,
     Plant(Plant),
@@ -417,12 +417,16 @@ impl Inventory {
         let result = self.0.get(i);
         match result {
             None => 0.0,
-            Some(&res) => res,
+            Some(&res) => {
+                assert!(!res.is_nan());
+                res
+            }
         }
     }
 
     fn set(&mut self, i: usize, v: f32) {
         assert!(i < self.0.len());
+        assert!(!v.is_nan());
         self.0[i] = v;
     }
 
@@ -519,11 +523,16 @@ impl City<'_> {
         // Produce resources and calculate food
         let mut total_food_resources = 0.0;
         for item in 0..ITEM_COUNT {
-            let production = inverse_add!(
+            let production = {let production = inverse_add!(
                 (self.population as f32 * 2.0),
-                (self.resources.get(item) * CONFIG.production_constant)
+                (self.resource_gathering.get(item) * CONFIG.production_constant)
             )
             .floor();
+            if production.is_nan() {
+                0.0
+            } else {
+                production
+            }};
             self.resources.add(item, production);
             self.production.add(item, production);
             // Deplete non-renewable resources and track food resources
@@ -694,8 +703,8 @@ struct Config {
 static CONFIG: Config = Config {
     gen_radius: 3,
     world_size: (40, 30),
-    coastal_city_density: 0.4,
-    inland_city_density: 0.1,
+    coastal_city_density: 0.15,
+    inland_city_density: 0.02,
     production_constant: 100.0,
     population_constant: 0.0001,
     notable_npc_threshold: 5,
@@ -707,6 +716,19 @@ type MarkovData = (
     Vec<(char, char)>,
     HashMap<(char, char), (Vec<char>, WeightedIndex<u32>)>,
 );
+
+fn markov_from_file(filename: &str) -> Option<MarkovData> {
+    let string_data: Vec<String> = match fs::read_to_string(filename){
+        Ok(res) => res,
+        Err(_) => return None
+    }.split(',').map(|string| string.to_lowercase() + ";").collect();
+    Some(get_markov_data(
+        &string_data
+            .iter()
+            .map(|s| s.as_ref())
+            .collect::<Vec<&str>>(),
+    ))
+}
 
 fn get_markov_data(strings: &[&str]) -> MarkovData {
     {
@@ -800,64 +822,16 @@ fn main() {
     }
 
     let mut rng = thread_rng();
-    let markov_data_city: MarkovData = get_markov_data(&[
-        "akron;",
-        "annapolis;",
-        "athens;",
-        "atlanta;",
-        "austin;",
-        "baltimore;",
-        "boise;",
-        "budapest;",
-        "camp hill;",
-        "carlisle;",
-        "chicago;",
-        "chronopolis;",
-        "dallas;",
-        "denver;",
-        "dover;",
-        "gotham;",
-        "harlem;",
-        "harrisburg;",
-        "hartford;",
-        "honolulu;",
-        "indianapolis;",
-        "juneau;",
-        "lancaster;",
-        "london;",
-        "los alamos;",
-        "los angeles;",
-        "madrid;",
-        "mechanicsburg;",
-        "montgomery;",
-        "new york;",
-        "orlando;",
-        "philadelphia;",
-        "phoenix;",
-        "pittsburg;",
-        "portland;",
-        "princeton;",
-        "sacramento;",
-        "san diego;",
-        "scranton;",
-        "seattle;",
-        "sparta;",
-        "springfield;",
-        "tallahassee;",
-        "trenton;",
-        "washington;",
-    ]);
-    let markov_data_person: MarkovData = get_markov_data(&[
-        "abigail;", "ava;", "nova;", "emma;", "maddie;", "natalie;", "abby;", "alethea;", "olivia;",
-    ]);
+    let markov_data_name: MarkovData = markov_from_file("csv/name.csv").unwrap();
+    let markov_data_metal: MarkovData = markov_from_file("csv/metal.csv").unwrap();
+    println!("{}", sample_markov(&markov_data_metal, &mut rng));
     // println!("{markov_data:?}");
     let (region_map, region_list) = build_region_map(&mut rng);
     let (mut city_list, mut trade_connections) = generate_cities(
         &region_map,
         &region_list,
         &mut rng,
-        &markov_data_city,
-        &markov_data_person,
+        &markov_data_name,
     );
     // println!("{trade_connections:?}");
     let trade_connections_list: Vec<(usize, usize)> =
@@ -881,7 +855,7 @@ fn main() {
         println!();
     }
     let mut current_year: u32 = 0;
-    for _ in 0..10000 {
+    for _ in 0..1000 {
         current_year += 1;
         if current_year % 100 == 0 {
             println!("{current_year}");
@@ -903,7 +877,7 @@ fn main() {
     }
     // println!("{city_list:?}");
     fs::write(
-        "./foo.json",
+        "./saves/foo.json",
         to_json(&region_list, city_list, &trade_connections, current_year).dump(),
     )
     .expect("Unable to write file");
@@ -953,7 +927,13 @@ fn sample_markov_option(markov_data: &MarkovData, rng: &mut ThreadRng) -> Option
     }
     // println!("{result:?}");
     if 5 < result.len() && result.len() < 15 {
-        Some(result)
+        Some(result.split(' ').map(|word| {
+            let mut chars = word.chars();
+            (match chars.next() {
+                None => String::new(),
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+            } + " ")
+        }).collect::<String>())
     } else {
         None
     }
@@ -1103,8 +1083,7 @@ fn generate_cities<'a>(
     region_map: &[usize],
     region_list: &[Region],
     rng: &mut ThreadRng,
-    markov_data: &MarkovData,
-    markov_data_person: &'a MarkovData,
+    markov_data: &'a MarkovData,
 ) -> (HashMap<usize, City<'a>>, HashMap<(usize, usize), i32>) {
     let mut possible_cities = Vec::new();
     for x in 0..region_map.len() {
@@ -1146,7 +1125,7 @@ fn generate_cities<'a>(
                         pos,
                         name: sample_markov(markov_data, rng),
                         npcs: Vec::new(),
-                        markov_data: markov_data_person,
+                        markov_data,
                         population: 100,
                         resources: Inventory::default(),
                         economy: Inventory::default(),
