@@ -5,9 +5,11 @@ use rand::seq::SliceRandom;
 use rand::Rng;
 use std::cmp::min;
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::slice::Iter;
 use std::{fmt, fs};
 use strum::*;
+use Terrain::*;
 
 macro_rules! get_adj {
     ($center: expr, $radius: expr) => {{
@@ -39,7 +41,6 @@ macro_rules! get_adj {
                     }
                 }
             }
-            // println!("{:?} => {adj:?}", $center);
             adj
         }
     }};
@@ -64,19 +65,6 @@ macro_rules! usize_to_vec {
     ($index: expr) => {
         vec![$index % CONFIG.world_size.0, $index / CONFIG.world_size.0]
     };
-}
-
-macro_rules! terrain_char {
-    ($terrain: expr) => {{
-        match $terrain {
-            Terrain::Ocean => '~',
-            Terrain::Plain => '%',
-            Terrain::Forest => '♣',
-            Terrain::Mountain => 'ߍ',
-            Terrain::Desert => '#',
-            Terrain::Jungle => '♠',
-        }
-    }};
 }
 
 impl From<Terrain> for JsonValue {
@@ -297,6 +285,23 @@ enum Terrain {
     Jungle,
 }
 
+impl Display for Terrain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                Ocean => '~',
+                Plain => '%',
+                Forest => '♣',
+                Mountain => 'ߍ',
+                Desert => '#',
+                Jungle => '♠',
+            }
+        )
+    }
+}
+
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Plant {
     Apple,
@@ -417,6 +422,7 @@ impl Inventory {
     }
 
     fn set(&mut self, i: usize, v: f32) {
+        assert!(i < self.0.len());
         self.0[i] = v;
     }
 
@@ -867,9 +873,10 @@ fn main() {
             } else {
                 print!(" ");
             }
-            let char: char =
-                terrain_char!(region_list[region_map[CONFIG.world_size.0 * y + x]].terrain);
-            print!("{char}");
+            print!(
+                "{}",
+                region_list[region_map[CONFIG.world_size.0 * y + x]].terrain
+            );
         }
         println!();
     }
@@ -954,7 +961,7 @@ fn sample_markov_option(markov_data: &MarkovData, rng: &mut ThreadRng) -> Option
 
 fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
     let mut regions = 0;
-    let mut region_map: Vec<Option<usize>> = vec![None; CONFIG.world_size.0 * CONFIG.world_size.1];
+    let mut region_map = vec![None; CONFIG.world_size.0 * CONFIG.world_size.1];
     for y in 0..CONFIG.world_size.1 {
         region_map[(y * CONFIG.world_size.0)] = Some(0);
         region_map[(CONFIG.world_size.0 + y * CONFIG.world_size.0 - 1)] = Some(0);
@@ -1021,7 +1028,7 @@ fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
         .collect();
     region_list.insert(0, {
         let mut base_region = random_region(0, &region_map_fixed, rng, regions);
-        base_region.terrain = Terrain::Ocean;
+        base_region.terrain = Ocean;
         base_region
     });
     (region_map_fixed, region_list)
@@ -1041,17 +1048,17 @@ fn random_region(
         let ter = ter_iter.choose(rng);
         match ter {
             Some(&terrain) => terrain,
-            None => Terrain::Ocean,
+            None => Ocean,
         }
     };
     let resources = {
         let (metal, gem, plant, animal) = match terrain {
-            Terrain::Plain => (0.2, 0.1, 0.4, 0.9),
-            Terrain::Forest => (0.1, 0.2, 0.9, 0.4),
-            Terrain::Mountain => (0.9, 0.4, 0.2, 0.1),
-            Terrain::Desert => (0.4, 0.9, 0.1, 0.2),
-            Terrain::Jungle => (0.1, 0.4, 0.9, 0.2),
-            Terrain::Ocean => (0.0, 0.0, 0.0, 0.0),
+            Plain => (0.2, 0.1, 0.4, 0.9),
+            Forest => (0.1, 0.2, 0.9, 0.4),
+            Mountain => (0.9, 0.4, 0.2, 0.1),
+            Desert => (0.4, 0.9, 0.1, 0.2),
+            Jungle => (0.1, 0.4, 0.9, 0.2),
+            Ocean => (0.0, 0.0, 0.0, 0.0),
         };
 
         let mut resources = Inventory::default();
@@ -1099,14 +1106,14 @@ fn generate_cities<'a>(
     markov_data: &MarkovData,
     markov_data_person: &'a MarkovData,
 ) -> (HashMap<usize, City<'a>>, HashMap<(usize, usize), i32>) {
-    let mut possible_cities: Vec<usize> = Vec::new();
+    let mut possible_cities = Vec::new();
     for x in 0..region_map.len() {
-        if region_list[region_map[x]].terrain == Terrain::Ocean {
+        if region_list[region_map[x]].terrain == Ocean {
             continue;
         }
         if get_adj!(x, 1)
             .iter()
-            .any(|&m| region_list[region_map[m]].terrain == Terrain::Ocean)
+            .any(|&m| region_list[region_map[m]].terrain == Ocean)
         {
             if rng.gen::<f32>() > CONFIG.coastal_city_density {
                 continue;
@@ -1116,7 +1123,7 @@ fn generate_cities<'a>(
         }
         possible_cities.push(x);
     }
-    let mut actual_cities: Vec<usize> = Vec::new();
+    let mut actual_cities = Vec::new();
     possible_cities.shuffle(rng);
     for x in possible_cities {
         // Discard a city if there's already a city adjacent to it
@@ -1185,13 +1192,15 @@ fn handle_trade(
 
     let (first_city_supply, second_city_supply): (Vec<f32>, Vec<f32>) = {
         (0..ITEM_COUNT)
-        .map(|item| {
-            (
-                second_city.economy.get(item) * CONFIG.trade_volume / first_city.economy.get(item),
-                first_city.economy.get(item) * CONFIG.trade_volume / second_city.economy.get(item),
-            )
-        })
-        .unzip()
+            .map(|item| {
+                (
+                    second_city.economy.get(item) * CONFIG.trade_volume
+                        / first_city.economy.get(item),
+                    first_city.economy.get(item) * CONFIG.trade_volume
+                        / second_city.economy.get(item),
+                )
+            })
+            .unzip()
     };
 
     let first_resource = {
@@ -1209,7 +1218,7 @@ fn handle_trade(
         (tup.0, *tup.1)
     };
 
-    // mutable references to update the cities' contents. 
+    // mutable references to update the cities' contents.
     // They have to be like this because you can't have two mutable references at the same time
     let first_city = city_list.get_mut(&route.0)?;
     first_city.resources.add(first_resource.0, first_resource.1);
