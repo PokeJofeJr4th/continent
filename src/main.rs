@@ -134,9 +134,19 @@ impl From<Npc> for JsonValue {
             alive: npc.alive,
             skills: object!{},
             inventory: object!{},
-            life: array![],
+            life: npc.life,
             reputation: 10,
             skills: npc.skills,
+        }
+    }
+}
+
+impl From<HistoricalEvent> for JsonValue {
+    fn from(value: HistoricalEvent) -> Self {
+        object! {
+            Type: "Event",
+            Time: value.time,
+            Desc: value.description
         }
     }
 }
@@ -448,6 +458,13 @@ struct Npc {
     age: u32,
     alive: bool,
     skills: HashMap<Skill, u8>,
+    life: Vec<HistoricalEvent>,
+}
+
+#[derive(Debug, Clone)]
+struct HistoricalEvent {
+    time: u32,
+    description: String,
 }
 
 #[derive(Debug, Clone)]
@@ -578,7 +595,7 @@ impl City<'_> {
         let mut npcs = std::mem::take(&mut self.npcs);
         let mut living_npcs: Vec<&mut Npc> = npcs.iter_mut().filter(|npc| npc.alive).collect();
         for npc in &mut living_npcs {
-            self.tick_npc(npc, rng);
+            self.tick_npc(npc, rng, current_year);
         }
         if living_npcs.len() < 3 {
             npcs.push(self.generate_npc(rng, current_year))
@@ -586,7 +603,7 @@ impl City<'_> {
         self.npcs = npcs;
     }
 
-    fn tick_npc(&mut self, npc: &mut Npc, rng: &mut ThreadRng) {
+    fn tick_npc(&mut self, npc: &mut Npc, rng: &mut ThreadRng, current_year: u32) {
         npc.age += 1;
         // Die of old age
         if npc.age > 80 {
@@ -599,7 +616,7 @@ impl City<'_> {
             .filter_map(|&point| {
                 let dist = distance(point, npc.origin);
                 if dist == 0.0 {
-                    if rng.gen::<f32>() < ((50 - npc.age) / npc.age) as f32 {
+                    if rng.gen::<f32>() < ((50.0 - npc.age as f32) / npc.age as f32) {
                         None
                     } else {
                         Some(point)
@@ -616,17 +633,25 @@ impl City<'_> {
             // Continue traveling
             npc.pos = *traveler_options.choose(rng).unwrap();
             if npc.pos == npc.origin {
-                println!("{} stopped traveling.", npc.name);
+                // Stop traveling
+                npc.life.push(HistoricalEvent {
+                    time: current_year,
+                    description: String::from("stopped traveling"),
+                });
                 return;
             }
         } else if npc.pos == npc.origin
             && npc.age > 15
-            && rng.gen::<f32>() * 10.0 < (npc.skills[&Adventuring] as f32 / npc.age as f32)
-            &&!traveler_options.is_empty()
+            && rng.gen::<f32>() * 10.0
+                < (*npc.skills.entry(Adventuring).or_insert(0) as f32 / npc.age as f32)
+            && !traveler_options.is_empty()
         {
             // Begin traveling
             npc.pos = *traveler_options.choose(rng).unwrap();
-            println!("{} started traveling.", npc.name);
+            npc.life.push(HistoricalEvent {
+                time: current_year,
+                description: String::from("started traveling"),
+            });
             return;
         }
 
@@ -646,6 +671,22 @@ impl City<'_> {
                 } > (npc.age.pow(2) as f32 * npc.skills[&choice] as f32)
                 {
                     npc.skills.insert(choice, npc.skills[&choice] + 1);
+                    match npc.skills.get(&choice) {
+                        Some(2) => npc.life.push(HistoricalEvent {
+                            time: current_year,
+                            description: String::from("began studying ") + choice.as_ref(),
+                        }),
+                        Some(5) => npc.life.push(HistoricalEvent {
+                            time: current_year,
+                            description: String::from("became an apprentice in ") + choice.as_ref(),
+                        }),
+                        Some(10) => npc.life.push(HistoricalEvent {
+                            time: current_year,
+                            description: String::from("became a master in ") + choice.as_ref(),
+                        }),
+                        None => {}
+                        Some(_) => {}
+                    }
                 }
             }
 
@@ -672,10 +713,10 @@ impl City<'_> {
                     }
                 };
             }
-            produce_goods!(&Skill::Metalworking, Metal::iter(), &Item::Metal => &Item::MetalGood);
-            produce_goods!(&Skill::AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::TameAnimal);
-            produce_goods!(&Skill::AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::Meat);
-            produce_goods!(&Skill::Gemcutting, Gem::iter(), &Item::Gem => &Item::CutGem);
+            produce_goods!(&Metalworking, Metal::iter(), &Item::Metal => &Item::MetalGood);
+            produce_goods!(&AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::TameAnimal);
+            produce_goods!(&AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::Meat);
+            produce_goods!(&Gemcutting, Gem::iter(), &Item::Gem => &Item::CutGem);
         }
     }
 
@@ -690,6 +731,7 @@ impl City<'_> {
             alive: true,
             birth: current_year,
             skills: HashMap::new(),
+            life: Vec::new(),
         }
     }
 }
