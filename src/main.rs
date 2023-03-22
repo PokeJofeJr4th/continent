@@ -11,9 +11,11 @@ use std::io::Read;
 use std::slice::Iter;
 use std::{fmt, fs};
 use strum::*;
+
 use Terrain::*;
 
-use continent::*;
+mod mkv;
+use crate::mkv::MarkovData;
 
 macro_rules! get_adj {
     ($center: expr, $radius: expr) => {{
@@ -474,7 +476,7 @@ struct City<'a> {
     name: String,
     pos: usize,
     npcs: Vec<Npc>,
-    markov_data: &'a MarkovData,
+    markov_data: &'a mkv::MarkovData,
     population: i32,
     resources: Inventory,
     economy: Inventory,
@@ -655,7 +657,7 @@ impl City<'_> {
     }
 
     fn generate_npc(&self, rng: &mut ThreadRng, current_year: u32) -> Npc {
-        let name = sample_markov(self.markov_data, rng);
+        let name = self.markov_data.sample(rng);
         Npc {
             name,
             title: String::from("citizen"),
@@ -726,7 +728,7 @@ fn main() {
                 let mut buf = Vec::new();
                 let mut f = File::open($path).unwrap();
             f.read_to_end(&mut buf).unwrap();
-            let $markov_data = bytes_to_markov(buf).unwrap();)*
+            let $markov_data = MarkovData::from_bytes(buf).unwrap();)*
         };
     }
 
@@ -740,7 +742,7 @@ fn main() {
         // markov_data_plant from "markov/plant.mkv"
     }
 
-    println!("{}", sample_markov(&markov_data_metal, &mut rng));
+    println!("{}", markov_data_metal.sample(&mut rng));
     // println!("{markov_data:?}");
     let (region_map, region_list) = build_region_map(&mut rng);
     let (mut city_list, mut trade_connections) =
@@ -793,67 +795,6 @@ fn main() {
         to_json(&region_list, city_list, &trade_connections, current_year).dump(),
     )
     .expect("Unable to write file");
-}
-
-fn sample_markov(markov_data: &MarkovData, rng: &mut ThreadRng) -> String {
-    loop {
-        if let Some(res) = sample_markov_option(markov_data, rng) {
-            return res;
-        }
-    }
-}
-
-fn sample_markov_option(markov_data: &MarkovData, rng: &mut ThreadRng) -> Option<String> {
-    let mut result: String = {
-        let chars: (char, char) = match markov_data.0.choose(rng) {
-            Some(&res) => res,
-            None => return None,
-        };
-        let mut string = String::new();
-        string.push(chars.0);
-        string.push(chars.1);
-        string
-    };
-    loop {
-        let ending = {
-            let mut chars = result.chars();
-            (
-                match chars.nth(result.len() - 2) {
-                    Some(res) => res,
-                    None => break,
-                },
-                match chars.next() {
-                    Some(res) => res,
-                    None => break,
-                },
-            )
-        };
-        result.push(match markov_data.1.get(&ending) {
-            Some(result) => match result.0.get(result.2.sample(rng)) {
-                Some(&';') => break,
-                Some(&c) => c,
-                None => break,
-            },
-            None => break,
-        })
-    }
-    // println!("{result:?}");
-    if 5 < result.len() && result.len() < 15 {
-        Some(
-            result
-                .split(' ')
-                .map(|word| {
-                    let mut chars = word.chars();
-                    (match chars.next() {
-                        None => String::new(),
-                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-                    } + " ")
-                })
-                .collect::<String>(),
-        )
-    } else {
-        None
-    }
 }
 
 fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
@@ -1000,7 +941,7 @@ fn generate_cities<'a>(
     region_map: &[usize],
     region_list: &[Region],
     rng: &mut ThreadRng,
-    markov_data: &'a MarkovData,
+    markov_data: &'a mkv::MarkovData,
 ) -> (HashMap<usize, City<'a>>, HashMap<(usize, usize), i32>) {
     let mut possible_cities = Vec::new();
     for x in 0..region_map.len() {
@@ -1040,7 +981,7 @@ fn generate_cities<'a>(
                     pos,
                     City {
                         pos,
-                        name: sample_markov(markov_data, rng),
+                        name: markov_data.sample(rng),
                         npcs: Vec::new(),
                         markov_data,
                         population: 100,
