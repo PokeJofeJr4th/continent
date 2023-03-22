@@ -6,10 +6,14 @@ use rand::Rng;
 use std::cmp::min;
 use std::collections::HashMap;
 use std::fmt::Display;
+use std::fs::File;
+use std::io::Read;
 use std::slice::Iter;
 use std::{fmt, fs};
 use strum::*;
 use Terrain::*;
+
+use continent::*;
 
 macro_rules! get_adj {
     ($center: expr, $radius: expr) => {{
@@ -309,12 +313,6 @@ enum Plant {
     Pumpkin,
 }
 
-// impl Default for Plant {
-//     fn default() -> Self {
-//         Plant::Apple
-//     }
-// }
-
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Metal {
     Iron,
@@ -322,12 +320,6 @@ enum Metal {
     Gold,
     Silver,
 }
-
-// impl Default for Metal {
-//     fn default() -> Self {
-//         Metal::Iron
-//     }
-// }
 
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Gem {
@@ -337,12 +329,6 @@ enum Gem {
     Agate,
 }
 
-// impl Default for Gem {
-//     fn default() -> Self {
-//         Gem::Diamond
-//     }
-// }
-
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Animal {
     Deer,
@@ -350,12 +336,6 @@ enum Animal {
     Rabbit,
     Wolf,
 }
-
-// impl Default for Animal {
-//     fn default() -> Self {
-//         Animal::Deer
-//     }
-// }
 
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 enum Item {
@@ -523,16 +503,18 @@ impl City<'_> {
         // Produce resources and calculate food
         let mut total_food_resources = 0.0;
         for item in 0..ITEM_COUNT {
-            let production = {let production = inverse_add!(
-                (self.population as f32 * 2.0),
-                (self.resource_gathering.get(item) * CONFIG.production_constant)
-            )
-            .floor();
-            if production.is_nan() {
-                0.0
-            } else {
-                production
-            }};
+            let production = {
+                let production = inverse_add!(
+                    (self.population as f32 * 2.0),
+                    (self.resource_gathering.get(item) * CONFIG.production_constant)
+                )
+                .floor();
+                if production.is_nan() {
+                    0.0
+                } else {
+                    production
+                }
+            };
             self.resources.add(item, production);
             self.production.add(item, production);
             // Deplete non-renewable resources and track food resources
@@ -712,91 +694,6 @@ static CONFIG: Config = Config {
     trade_quantity: 20,
 };
 
-type MarkovData = (
-    Vec<(char, char)>,
-    HashMap<(char, char), (Vec<char>, WeightedIndex<u32>)>,
-);
-
-fn markov_from_file(filename: &str) -> Option<MarkovData> {
-    let string_data: Vec<String> = match fs::read_to_string(filename){
-        Ok(res) => res,
-        Err(_) => return None
-    }.split(',').map(|string| string.to_lowercase() + ";").collect();
-    Some(get_markov_data(
-        &string_data
-            .iter()
-            .map(|s| s.as_ref())
-            .collect::<Vec<&str>>(),
-    ))
-}
-
-fn get_markov_data(strings: &[&str]) -> MarkovData {
-    {
-        let mut counts: HashMap<((char, char), char), u32> = HashMap::new();
-        let mut starts = Vec::new();
-        for string in strings {
-            starts.push({
-                let mut chars = string.chars();
-                (
-                    match chars.next() {
-                        Some(res) => res,
-                        None => continue,
-                    },
-                    match chars.next() {
-                        Some(res) => res,
-                        None => continue,
-                    },
-                )
-            });
-            for i in 0..(string.len() - 2) {
-                let mut chars = string.chars();
-                let char_triple = (
-                    (
-                        match chars.nth(i) {
-                            Some(c) => c,
-                            None => continue,
-                        },
-                        match chars.next() {
-                            Some(c) => c,
-                            None => continue,
-                        },
-                    ),
-                    match chars.next() {
-                        Some(c) => c,
-                        None => continue,
-                    },
-                );
-                counts.insert(char_triple, {
-                    match counts.get(&char_triple) {
-                        Some(c) => c + 1,
-                        None => 1,
-                    }
-                });
-            }
-        }
-        let mut intermediate_counts: HashMap<(char, char), (Vec<char>, Vec<u32>)> = HashMap::new();
-        for (&(k, character), &amount) in counts.iter() {
-            intermediate_counts.insert(k, {
-                let mut vectors = match intermediate_counts.get(&k) {
-                    Some(vecs) => vecs.clone(),
-                    None => (Vec::new(), Vec::new()),
-                };
-                vectors.0.push(character);
-                vectors.1.push(amount);
-                vectors
-            });
-        }
-        let final_counts = intermediate_counts
-            .iter()
-            .filter_map(|(&k, (chars, weights))| match WeightedIndex::new(weights) {
-                Ok(res) => Some((k, (chars.clone(), res))),
-                Err(_) => None,
-            })
-            .collect();
-        (starts, final_counts)
-    }
-}
-
 fn main() {
     unsafe {
         // This is safe because nothing's accessing it yet
@@ -822,17 +719,32 @@ fn main() {
     }
 
     let mut rng = thread_rng();
-    let markov_data_name: MarkovData = markov_from_file("csv/name.csv").unwrap();
-    let markov_data_metal: MarkovData = markov_from_file("csv/metal.csv").unwrap();
+
+    macro_rules! markov_data {
+        {$($markov_data: ident from $path: expr),*} => {
+            $(
+                let mut buf = Vec::new();
+                let mut f = File::open($path).unwrap();
+            f.read_to_end(&mut buf).unwrap();
+            let $markov_data = bytes_to_markov(buf).unwrap();)*
+        };
+    }
+
+    markov_data! {
+        // markov_data_animal from "markov/animal.markov",
+        // markov_data_gemstone from "markov/gemstone.markov",
+        // markov_data_magic from "markov/magic.markov",
+        markov_data_metal from "markov/metal.markov",
+        // markov_data_monster from "markov/monster.markov",
+        markov_data_name from "markov/name.markov"
+        // markov_data_plant from "markov/plant.markov"
+    }
+
     println!("{}", sample_markov(&markov_data_metal, &mut rng));
     // println!("{markov_data:?}");
     let (region_map, region_list) = build_region_map(&mut rng);
-    let (mut city_list, mut trade_connections) = generate_cities(
-        &region_map,
-        &region_list,
-        &mut rng,
-        &markov_data_name,
-    );
+    let (mut city_list, mut trade_connections) =
+        generate_cities(&region_map, &region_list, &mut rng, &markov_data_name);
     // println!("{trade_connections:?}");
     let trade_connections_list: Vec<(usize, usize)> =
         trade_connections.iter().map(|(&k, _v)| k).collect();
@@ -917,7 +829,7 @@ fn sample_markov_option(markov_data: &MarkovData, rng: &mut ThreadRng) -> Option
             )
         };
         result.push(match markov_data.1.get(&ending) {
-            Some(result) => match result.0.get(result.1.sample(rng)) {
+            Some(result) => match result.0.get(result.2.sample(rng)) {
                 Some(&';') => break,
                 Some(&c) => c,
                 None => break,
@@ -927,13 +839,18 @@ fn sample_markov_option(markov_data: &MarkovData, rng: &mut ThreadRng) -> Option
     }
     // println!("{result:?}");
     if 5 < result.len() && result.len() < 15 {
-        Some(result.split(' ').map(|word| {
-            let mut chars = word.chars();
-            (match chars.next() {
-                None => String::new(),
-                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
-            } + " ")
-        }).collect::<String>())
+        Some(
+            result
+                .split(' ')
+                .map(|word| {
+                    let mut chars = word.chars();
+                    (match chars.next() {
+                        None => String::new(),
+                        Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                    } + " ")
+                })
+                .collect::<String>(),
+        )
     } else {
         None
     }
