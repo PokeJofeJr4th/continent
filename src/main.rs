@@ -1018,7 +1018,7 @@ fn random_region(
             })
             .collect(),
         monster: {
-            let species = Species::iter().choose(rng).unwrap();
+            let species = *terrain.monster_types().choose(rng).unwrap();
             Some(Monster {
                 alive: true,
                 location: *tiles.choose(rng).unwrap(),
