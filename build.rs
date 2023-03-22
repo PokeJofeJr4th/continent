@@ -1,6 +1,5 @@
-use std::{collections::HashMap, fs, io::Write};
 use rand::distributions::WeightedIndex;
-
+use std::{collections::HashMap, fs, io::Write};
 
 pub type MarkovData = (
     Vec<(char, char)>,
@@ -129,6 +128,9 @@ pub fn markov_to_bytes(markov_data: &MarkovData) -> Vec<u8> {
 }
 
 fn main() {
+    println!("cargo:rerun-if-changed=csv/");
+    println!("cargo:rerun-if-changed=build.rs");
+
     macro_rules! markov_data {
         {$($src_path: expr => $dest_path: expr),*} => {
             $(let markov_data: MarkovData = markov_from_file($src_path).unwrap();
@@ -137,7 +139,7 @@ fn main() {
         }
     }
 
-    markov_data!{
+    markov_data! {
         "csv/animal.csv" => "markov/animal.markov",
         "csv/gemstone.csv" => "markov/gemstone.markov",
         "csv/magic.csv" => "markov/magic.markov",
