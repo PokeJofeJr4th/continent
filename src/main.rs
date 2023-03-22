@@ -65,19 +65,19 @@ fn usize_to_vec(index: usize) -> Vec<usize> {
     vec![index % CONFIG.world_size.0, index / CONFIG.world_size.0]
 }
 
-impl From<Terrain> for JsonValue {
-    fn from(terrain: Terrain) -> JsonValue {
-        JsonValue::from(terrain.as_ref())
-    }
-}
-
 impl From<Inventory> for JsonValue {
     fn from(inventory: Inventory) -> JsonValue {
         JsonValue::from(
             inventory
                 .iter()
                 .enumerate()
-                .map(|(index, &amount)| (format!("{}", Item::from(index)), amount))
+                .filter_map(|(index, &amount)| {
+                    if amount == 0.0 {
+                        None
+                    } else {
+                        Some((format!("{}", Item::from(index)), amount))
+                    }
+                })
                 .collect::<HashMap<String, f32>>(),
         )
     }
@@ -89,7 +89,7 @@ impl From<Region> for JsonValue {
             id: region.id,
             tiles: region.tiles.iter().map(|&tile| usize_to_vec(tile)).collect::<Vec<Vec<usize>>>(),
             resources: region.resources,
-            terrain: region.terrain,
+            terrain: region.terrain.as_ref(),
             adjacent_regions: region.adjacent_regions,
             ancestor_race: "Human",
             demographics: object!{Human: 1.0},
@@ -192,6 +192,24 @@ impl From<Config> for JsonValue {
     }
 }
 
+impl From<Species> for JsonValue {
+    fn from(value: Species) -> Self {
+        JsonValue::from(value.as_ref())
+    }
+}
+
+impl From<Terrain> for JsonValue {
+    fn from(value: Terrain) -> Self {
+        object! {
+            Resources: {
+                Animal: 0.3, Fish: 0.0, Plant: 0.9, Metal: 0.1, Gemstone: 0.1
+            },
+            Monsters: value.monster_types(),
+            Color: value.color()
+        }
+    }
+}
+
 fn to_json(
     region_list: &[Region],
     city_list: HashMap<usize, City>,
@@ -212,51 +230,12 @@ fn to_json(
         CityList: city_list.values().map(|city| JsonValue::from(city.clone())).collect::<Vec<JsonValue>>(),
         trade_connections: trade_connections.iter().map(|((first, second), &strength)| (format!("[{}, {}, {}, {}]", first % CONFIG.world_size.0, first / CONFIG.world_size.0, second % CONFIG.world_size.0, second / CONFIG.world_size.0), strength)).collect::<HashMap<String, i32>>(),
         Biomes: {
-            Desert: {
-                Resources: {
-                    Animal: 0.1, Fish: 0.0, Plant: 0.2, Metal: 0.1, Gemstone: 0.2
-                },
-                Monsters: ["Worm", "Dragon"],
-                Color: [160, 140, 90]
-            },
-            Forest: {
-                Resources: {
-                    Animal: 0.3, Fish: 0.0, Plant: 0.9, Metal: 0.1, Gemstone: 0.1
-                },
-                Monsters: ["Beast"],
-                Color: [90, 150, 80]
-            },
-            Jungle: {
-                Resources: {
-                    Animal: 0.4, Fish: 0.0, Plant: 1.0, Metal: 0.1, Gemstone: 0.1
-                },
-                Monsters: ["Beast"],
-                Color: [40, 130, 80]
-            },
-            Mountain: {
-                Resources: {
-                    Animal: 0.2, Fish: 0.0, Plant: 0.4, Metal: 0.5, Gemstone: 0.4
-                },
-                Monsters: ["Dragon"],
-                Color: [95, 95, 95]
-            },
-            Ocean: {
-                Resources: {},
-                Monsters: ["Leviathan"],
-                Color: [70, 90, 140]
-            },
-            Plain: {
-                Resources: {
-                    Animal: 0.4, Fish: 0.0, Plant: 0.9, Metal: 0.1, Gemstone: 0.1
-                },
-                Monsters: ["Dragon", "Beast"],
-                Color: [120, 140, 80]
-            },
-            Sea: {
-                Resources: {},
-                Monsters: ["Worm", "Leviathan"],
-                Color: [70, 100, 140]
-            }},
+            Desert: Desert,
+            Forest: Forest,
+            Jungle: Jungle,
+            Mountain: Mountain,
+            Ocean: Ocean,
+            Plain: Plain},
         Items: {
             Animals: item_type!(Animal),
             Plants: item_type!(Plant),
@@ -284,6 +263,40 @@ enum Terrain {
     Mountain,
     Desert,
     Jungle,
+}
+
+#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, EnumIter)]
+enum Species {
+    Leviathan,
+    Dragon,
+    Beast,
+    Worm,
+}
+
+use Species::*;
+
+impl Terrain {
+    fn monster_types(&self) -> Vec<Species> {
+        match &self {
+            Ocean => vec![Leviathan],
+            Plain => vec![Dragon, Beast],
+            Forest => vec![Beast],
+            Mountain => vec![Dragon],
+            Desert => vec![Worm, Dragon],
+            Jungle => vec![Beast],
+        }
+    }
+
+    fn color(&self) -> Vec<u8> {
+        match &self {
+            Ocean => vec![70, 90, 140],
+            Plain => vec![120, 140, 80],
+            Forest => vec![90, 150, 80],
+            Mountain => vec![96, 96, 96],
+            Desert => vec![160, 140, 90],
+            Jungle => vec![40, 130, 80],
+        }
+    }
 }
 
 impl Display for Terrain {
@@ -1004,14 +1017,90 @@ fn random_region(
                 })
             })
             .collect(),
-        monster: Some(Monster {
-            alive: true,
-            location: *tiles.choose(rng).unwrap(),
-            inventory: Inventory::default(),
-            species: String::from("Creature"),
-            name: markov_data_monster.sample(rng),
-            desc: String::from("a creature of some type"),
-        }),
+        monster: {
+            let species = Species::iter().choose(rng).unwrap();
+            Some(Monster {
+                alive: true,
+                location: *tiles.choose(rng).unwrap(),
+                inventory: Inventory::default(),
+                species: String::from(species.as_ref()),
+                name: markov_data_monster.sample(rng),
+                desc: {
+                    let color = ["red", "blue", "black", "white", "green", "gray"]
+                        .choose(rng)
+                        .unwrap();
+                    match species {
+                        Leviathan => format!(
+                            "a giant sea creature with {} tentacles, a {}, and {}, {} skin",
+                            ((3..=8).choose(rng).unwrap()) * 2,
+                            ["chitinous beak", "toothy maw"].choose(rng).unwrap(),
+                            ["slimy", "smooth", "rough", "bumpy"].choose(rng).unwrap(),
+                            color
+                        ),
+                        Dragon => format!(
+                            "a great winged reptile with {} horns and claws and {} scales. It {}",
+                            ["engraved", "long", "sharpened", "serrated"]
+                                .choose(rng)
+                                .unwrap(),
+                            color,
+                            [
+                                "is adorned with arcane sigils",
+                                "wears bone jewelry",
+                                "has a prominent scar"
+                            ]
+                            .choose(rng)
+                            .unwrap()
+                        ),
+                        Beast => {
+                            let (species1, species2) = {
+                                let mut slice = [
+                                    "bear", "beaver", "gorilla", "coyote", "wolf", "bird", "deer",
+                                    "owl", "lizard", "moose", "spider", "insect", "lion",
+                                ]
+                                .choose_multiple(rng, 2);
+                                (slice.next().unwrap(), slice.next().unwrap())
+                            };
+                            let (species, part): &(&str, &str) = [
+                                ("bird", "wings"),
+                                ("bat", "wings"),
+                                ("snake", "fangs"),
+                                ("deer", "antlers"),
+                                ("moose", "antlers"),
+                                ("spider", "legs"),
+                                ("scorpion", "stinger"),
+                                ("elephant", "tusks"),
+                            ]
+                            .choose(rng)
+                            .unwrap();
+                            format!(
+                                "an oversized {} {} the {} of a {}",
+                                species1,
+                                {
+                                    if species1 == species2 {
+                                        String::from("with")
+                                    } else {
+                                        format!("with the head of a {} and", species2)
+                                    }
+                                },
+                                part,
+                                species
+                            )
+                        }
+                        Worm => format!(
+                            "an enormous worm with {} plating {}",
+                            color,
+                            [
+                                "engraved with symbols",
+                                "covered in spikes",
+                                "and a fleshy sail along its spine"
+                            ]
+                            .choose(rng)
+                            .unwrap()
+                        ),
+                    }
+                },
+            })
+        },
     }
 }
 
