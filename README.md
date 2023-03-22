@@ -1,7 +1,9 @@
 # continent
 Rust/Python world simulation
 ## Rust
-Running main.rs puts a world map and century indicators into the command line, then generates a foo.json file with most of the information the python project needs.
+- main.rs puts a world map and century indicators into the terminal, then generates a foo.json file with most of the information the python project needs to generate a report.
+- lib.rs has the functionality for generating and dumping markov data.
+- build.rs converts csv strings to condensed .mkv format.
 ## Python
 - sim-template.py is a Jinja2 template file
 - sim.py is the file with all of the game logic and the pygame window with the dynamic world map
