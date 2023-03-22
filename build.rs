@@ -140,12 +140,12 @@ fn main() {
     }
 
     markov_data! {
-        "csv/animal.csv" => "markov/animal.markov",
-        "csv/gemstone.csv" => "markov/gemstone.markov",
-        "csv/magic.csv" => "markov/magic.markov",
-        "csv/metal.csv" => "markov/metal.markov",
-        "csv/monster.csv" => "markov/monster.markov",
-        "csv/name.csv" => "markov/name.markov",
-        "csv/plant.csv" => "markov/plant.markov"
+        "csv/animal.csv" => "markov/animal.mkv",
+        "csv/gemstone.csv" => "markov/gemstone.mkv",
+        "csv/magic.csv" => "markov/magic.mkv",
+        "csv/metal.csv" => "markov/metal.mkv",
+        "csv/monster.csv" => "markov/monster.mkv",
+        "csv/name.csv" => "markov/name.mkv",
+        "csv/plant.csv" => "markov/plant.mkv"
     }
 }

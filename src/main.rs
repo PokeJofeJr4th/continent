@@ -731,13 +731,13 @@ fn main() {
     }
 
     markov_data! {
-        // markov_data_animal from "markov/animal.markov",
-        // markov_data_gemstone from "markov/gemstone.markov",
-        // markov_data_magic from "markov/magic.markov",
-        markov_data_metal from "markov/metal.markov",
-        // markov_data_monster from "markov/monster.markov",
-        markov_data_name from "markov/name.markov"
-        // markov_data_plant from "markov/plant.markov"
+        // markov_data_animal from "markov/animal.mkv",
+        // markov_data_gemstone from "markov/gemstone.mkv",
+        // markov_data_magic from "markov/magic.mkv",
+        markov_data_metal from "markov/metal.mkv",
+        // markov_data_monster from "markov/monster.mkv",
+        markov_data_name from "markov/name.mkv"
+        // markov_data_plant from "markov/plant.mkv"
     }
 
     println!("{}", sample_markov(&markov_data_metal, &mut rng));
