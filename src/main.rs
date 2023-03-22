@@ -12,53 +12,53 @@ use std::slice::Iter;
 use std::{fmt, fs};
 use strum::*;
 
+use Skill::*;
 use Terrain::*;
 
 mod mkv;
 use crate::mkv::MarkovData;
 
 fn get_adj(center: usize, radius: usize) -> Vec<usize> {
-        if radius == 0 {
-            vec![
-                center + 1,
-                center - 1,
-                center + CONFIG.world_size.0,
-                center - CONFIG.world_size.0,
-            ]
-        } else {
-            let mut adj: Vec<usize> = Vec::new();
-            for x in 0..(2 * radius + 1) {
-                for y in 0..(2 * radius + 1) {
-                    if (x, y) == (radius, radius) {
-                        continue;
-                    }
-                    let positive = center + x + y * CONFIG.world_size.0;
-                    let negative = radius * (1 + CONFIG.world_size.0);
-                    if negative > positive {
-                        continue;
-                    }
-                    let adj_index: usize = positive - negative;
-                    if adj_index < CONFIG.world_size.0 * CONFIG.world_size.1
-                        && (adj_index / CONFIG.world_size.0
-                            == (center / CONFIG.world_size.0) + y - radius)
-                    {
-                        adj.push(adj_index);
-                    }
+    if radius == 0 {
+        vec![
+            center + 1,
+            center - 1,
+            center + CONFIG.world_size.0,
+            center - CONFIG.world_size.0,
+        ]
+    } else {
+        let mut adj: Vec<usize> = Vec::new();
+        for x in 0..(2 * radius + 1) {
+            for y in 0..(2 * radius + 1) {
+                if (x, y) == (radius, radius) {
+                    continue;
+                }
+                let positive = center + x + y * CONFIG.world_size.0;
+                let negative = radius * (1 + CONFIG.world_size.0);
+                if negative > positive {
+                    continue;
+                }
+                let adj_index: usize = positive - negative;
+                if adj_index < CONFIG.world_size.0 * CONFIG.world_size.1
+                    && (adj_index / CONFIG.world_size.0
+                        == (center / CONFIG.world_size.0) + y - radius)
+                {
+                    adj.push(adj_index);
                 }
             }
-            adj
         }
+        adj
+    }
 }
 
-fn distance(a: usize, b:usize) -> f32 {
-        ((((a / CONFIG.world_size.0) as i32 - (b / CONFIG.world_size.0) as i32).pow(2)
-            + ((a % CONFIG.world_size.0) as i32 - (b % CONFIG.world_size.0) as i32).pow(2))
-            as f32)
-            .sqrt()
+fn distance(a: usize, b: usize) -> f32 {
+    ((((a / CONFIG.world_size.0) as i32 - (b / CONFIG.world_size.0) as i32).pow(2)
+        + ((a % CONFIG.world_size.0) as i32 - (b % CONFIG.world_size.0) as i32).pow(2)) as f32)
+        .sqrt()
 }
 
 fn inverse_add(a: f32, b: f32) -> f32 {
-        (a * b) / (a + b)
+    (a * b) / (a + b)
 }
 
 fn usize_to_vec(index: usize) -> Vec<usize> {
@@ -93,14 +93,7 @@ impl From<Region> for JsonValue {
             adjacent_regions: region.adjacent_regions,
             ancestor_race: "Human",
             demographics: object!{Human: 1.0},
-            monster: Monster {
-                alive: true,
-                location: 12,
-                inventory: Inventory::default(),
-                species: String::from("Dragon"),
-                name: String::from("Drew"),
-                desc: String::from("Draggin'")
-            }
+            monster: region.monster
         }
     }
 }
@@ -420,6 +413,7 @@ struct Region {
     resources: Inventory,
     terrain: Terrain,
     adjacent_regions: Vec<usize>,
+    monster: Option<Monster>,
 }
 
 #[derive(Debug, Clone)]
@@ -500,7 +494,7 @@ impl City<'_> {
             let production = {
                 let production = inverse_add(
                     self.population as f32 * 2.0,
-                    self.resource_gathering.get(item) * CONFIG.production_constant
+                    self.resource_gathering.get(item) * CONFIG.production_constant,
                 )
                 .floor();
                 if production.is_nan() {
@@ -599,6 +593,43 @@ impl City<'_> {
             npc.alive = false;
             return;
         }
+        // Traveling
+        let traveler_options: Vec<usize> = get_adj(npc.pos, 1)
+            .iter()
+            .filter_map(|&point| {
+                let dist = distance(point, npc.origin);
+                if dist == 0.0 {
+                    if rng.gen::<f32>() < ((50 - npc.age) / npc.age) as f32 {
+                        None
+                    } else {
+                        Some(point)
+                    }
+                } else if dist < 10.0 {
+                    Some(point)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        if npc.pos != npc.origin && !traveler_options.is_empty() {
+            // Continue traveling
+            npc.pos = *traveler_options.choose(rng).unwrap();
+            if npc.pos == npc.origin {
+                println!("{} stopped traveling.", npc.name);
+                return;
+            }
+        } else if npc.pos == npc.origin
+            && npc.age > 15
+            && rng.gen::<f32>() * 10.0 < (npc.skills[&Adventuring] as f32 / npc.age as f32)
+            &&!traveler_options.is_empty()
+        {
+            // Begin traveling
+            npc.pos = *traveler_options.choose(rng).unwrap();
+            println!("{} started traveling.", npc.name);
+            return;
+        }
+
         // Learning / Studying
         if npc.age > 15 {
             let study_choices: Vec<u8> = Skill::iter()
@@ -729,14 +760,14 @@ fn main() {
         // markov_data_gemstone from "markov/gemstone.mkv",
         // markov_data_magic from "markov/magic.mkv",
         markov_data_metal from "markov/metal.mkv",
-        // markov_data_monster from "markov/monster.mkv",
+        markov_data_monster from "markov/monster.mkv",
         markov_data_name from "markov/name.mkv"
         // markov_data_plant from "markov/plant.mkv"
     }
 
     println!("{}", markov_data_metal.sample(&mut rng));
     // println!("{markov_data:?}");
-    let (region_map, region_list) = build_region_map(&mut rng);
+    let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster);
     let (mut city_list, mut trade_connections) =
         generate_cities(&region_map, &region_list, &mut rng, &markov_data_name);
     // println!("{trade_connections:?}");
@@ -789,7 +820,10 @@ fn main() {
     .expect("Unable to write file");
 }
 
-fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
+fn build_region_map(
+    rng: &mut ThreadRng,
+    markov_data_monster: &MarkovData,
+) -> (Vec<usize>, Vec<Region>) {
     let mut regions = 0;
     let mut region_map = vec![None; CONFIG.world_size.0 * CONFIG.world_size.1];
     for y in 0..CONFIG.world_size.1 {
@@ -803,7 +837,7 @@ fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
     // println!("{region_map:?}");
     let mut indices: Vec<usize> = (0..(CONFIG.world_size.0 * CONFIG.world_size.1)).collect();
     loop {
-        indices.shuffle(&mut rng);
+        indices.shuffle(rng);
         for index in indices.clone() {
             if match region_map.get(index) {
                 Some(res) => res.is_some(),
@@ -828,7 +862,7 @@ fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
                     // println!("No adjacent non -1");
                     continue;
                 }
-                region_map[index] = adj.choose(&mut rng).copied();
+                region_map[index] = adj.choose(rng).copied();
                 // println!("Set Region to {}", region_map[index as usize]);
                 break;
             }
@@ -854,10 +888,11 @@ fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
     }
     let region_map_fixed: Vec<usize> = region_map.iter().map(|&m| m.unwrap_or(0)).collect();
     let mut region_list: Vec<Region> = (0..regions)
-        .map(|id| random_region(id + 1, &region_map_fixed, rng, regions))
+        .map(|id| random_region(id + 1, &region_map_fixed, rng, regions, markov_data_monster))
         .collect();
     region_list.insert(0, {
-        let mut base_region = random_region(0, &region_map_fixed, rng, regions);
+        let mut base_region =
+            random_region(0, &region_map_fixed, rng, regions, markov_data_monster);
         base_region.terrain = Ocean;
         base_region
     });
@@ -869,6 +904,7 @@ fn random_region(
     region_map: &[usize],
     rng: &mut ThreadRng,
     region_count: usize,
+    markov_data_monster: &MarkovData,
 ) -> Region {
     let tiles: Vec<usize> = (0..(CONFIG.world_size.0 * CONFIG.world_size.1))
         .filter(|&i| region_map[i] == id)
@@ -926,6 +962,14 @@ fn random_region(
                 })
             })
             .collect(),
+        monster: Some(Monster {
+            alive: true,
+            location: *tiles.choose(rng).unwrap(),
+            inventory: Inventory::default(),
+            species: String::from("Creature"),
+            name: markov_data_monster.sample(rng),
+            desc: String::from("a creature of some type"),
+        }),
     }
 }
 
