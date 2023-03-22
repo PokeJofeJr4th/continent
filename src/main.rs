@@ -17,31 +17,30 @@ use Terrain::*;
 mod mkv;
 use crate::mkv::MarkovData;
 
-macro_rules! get_adj {
-    ($center: expr, $radius: expr) => {{
-        if $radius == 0 {
+fn get_adj(center: usize, radius: usize) -> Vec<usize> {
+        if radius == 0 {
             vec![
-                $center + 1,
-                $center - 1,
-                $center + CONFIG.world_size.0,
-                $center - CONFIG.world_size.0,
+                center + 1,
+                center - 1,
+                center + CONFIG.world_size.0,
+                center - CONFIG.world_size.0,
             ]
         } else {
             let mut adj: Vec<usize> = Vec::new();
-            for x in 0..(2 * $radius + 1) {
-                for y in 0..(2 * $radius + 1) {
-                    if (x, y) == ($radius, $radius) {
+            for x in 0..(2 * radius + 1) {
+                for y in 0..(2 * radius + 1) {
+                    if (x, y) == (radius, radius) {
                         continue;
                     }
-                    let positive = $center + x + y * CONFIG.world_size.0;
-                    let negative = $radius * (1 + CONFIG.world_size.0);
+                    let positive = center + x + y * CONFIG.world_size.0;
+                    let negative = radius * (1 + CONFIG.world_size.0);
                     if negative > positive {
                         continue;
                     }
                     let adj_index: usize = positive - negative;
                     if adj_index < CONFIG.world_size.0 * CONFIG.world_size.1
                         && (adj_index / CONFIG.world_size.0
-                            == ($center / CONFIG.world_size.0) + y - $radius)
+                            == (center / CONFIG.world_size.0) + y - radius)
                     {
                         adj.push(adj_index);
                     }
@@ -49,28 +48,21 @@ macro_rules! get_adj {
             }
             adj
         }
-    }};
 }
 
-macro_rules! distance {
-    ($a: expr, $b: expr) => {
-        (((($a / CONFIG.world_size.0) as i32 - ($b / CONFIG.world_size.0) as i32).pow(2)
-            + (($a % CONFIG.world_size.0) as i32 - ($b % CONFIG.world_size.0) as i32).pow(2))
+fn distance(a: usize, b:usize) -> f32 {
+        ((((a / CONFIG.world_size.0) as i32 - (b / CONFIG.world_size.0) as i32).pow(2)
+            + ((a % CONFIG.world_size.0) as i32 - (b % CONFIG.world_size.0) as i32).pow(2))
             as f32)
             .sqrt()
-    };
 }
 
-macro_rules! inverse_add {
-    ($a: expr, $b: expr) => {
-        ($a * $b) / ($a + $b)
-    };
+fn inverse_add(a: f32, b: f32) -> f32 {
+        (a * b) / (a + b)
 }
 
-macro_rules! usize_to_vec {
-    ($index: expr) => {
-        vec![$index % CONFIG.world_size.0, $index / CONFIG.world_size.0]
-    };
+fn usize_to_vec(index: usize) -> Vec<usize> {
+    vec![index % CONFIG.world_size.0, index / CONFIG.world_size.0]
 }
 
 impl From<Terrain> for JsonValue {
@@ -95,7 +87,7 @@ impl From<Region> for JsonValue {
     fn from(region: Region) -> JsonValue {
         object! {
             id: region.id,
-            tiles: region.tiles.iter().map(|&tile| usize_to_vec!(tile)).collect::<Vec<Vec<usize>>>(),
+            tiles: region.tiles.iter().map(|&tile| usize_to_vec(tile)).collect::<Vec<Vec<usize>>>(),
             resources: region.resources,
             terrain: region.terrain,
             adjacent_regions: region.adjacent_regions,
@@ -121,7 +113,7 @@ impl From<Monster> for JsonValue {
             desc: monster.desc,
             inventory: monster.inventory,
             alive: monster.alive,
-            location: usize_to_vec!(monster.location)
+            location: usize_to_vec(monster.location)
         }
     }
 }
@@ -141,8 +133,8 @@ impl From<Npc> for JsonValue {
         object! {
             name: npc.name,
             title: npc.title,
-            pos: usize_to_vec!(npc.pos),
-            origin: usize_to_vec!(npc.origin),
+            pos: usize_to_vec(npc.pos),
+            origin: usize_to_vec(npc.origin),
             birth: npc.birth,
             age: npc.age,
             race: "Human",
@@ -159,7 +151,7 @@ impl From<Npc> for JsonValue {
 impl From<City<'_>> for JsonValue {
     fn from(city: City) -> JsonValue {
         object! {
-            pos: usize_to_vec!(city.pos),
+            pos: usize_to_vec(city.pos),
             name: city.name,
             population: city.population,
             homunculi: 0,
@@ -506,9 +498,9 @@ impl City<'_> {
         let mut total_food_resources = 0.0;
         for item in 0..ITEM_COUNT {
             let production = {
-                let production = inverse_add!(
-                    (self.population as f32 * 2.0),
-                    (self.resource_gathering.get(item) * CONFIG.production_constant)
+                let production = inverse_add(
+                    self.population as f32 * 2.0,
+                    self.resource_gathering.get(item) * CONFIG.production_constant
                 )
                 .floor();
                 if production.is_nan() {
@@ -827,7 +819,7 @@ fn build_region_map(mut rng: &mut ThreadRng) -> (Vec<usize>, Vec<Region>) {
                 continue;
             }
             for n in 0..CONFIG.gen_radius {
-                let adj: Vec<usize> = get_adj!(&index, n)
+                let adj: Vec<usize> = get_adj(index, n)
                     .iter()
                     .filter_map(|&m| region_map[m])
                     .collect();
@@ -928,7 +920,7 @@ fn random_region(
         adjacent_regions: (0..region_count)
             .filter(|&neighbor_region| {
                 tiles.iter().any(|&tile| {
-                    get_adj!(tile, 1)
+                    get_adj(tile, 1)
                         .iter()
                         .any(|&local_region| local_region == neighbor_region)
                 })
@@ -948,7 +940,7 @@ fn generate_cities<'a>(
         if region_list[region_map[x]].terrain == Ocean {
             continue;
         }
-        if get_adj!(x, 1)
+        if get_adj(x, 1)
             .iter()
             .any(|&m| region_list[region_map[m]].terrain == Ocean)
         {
@@ -964,7 +956,7 @@ fn generate_cities<'a>(
     possible_cities.shuffle(rng);
     for x in possible_cities {
         // Discard a city if there's already a city adjacent to it
-        if get_adj!(x, 1)
+        if get_adj(x, 1)
             .iter()
             .any(|&x| actual_cities.iter().any(|&c| x == c))
         {
@@ -1009,7 +1001,7 @@ fn generate_cities<'a>(
                 trade_connections.extend(
                     actual_cities
                         .iter()
-                        .filter(|&&end| end > start && distance!(end, start) < 5.0)
+                        .filter(|&&end| end > start && distance(end, start) < 5.0)
                         .map(|&end| ((start, end), 0)),
                 )
             }
