@@ -2,7 +2,7 @@
 Rust/Python world simulation
 ## Rust
 - main.rs puts a world map and century indicators into the terminal, then generates a foo.json file with most of the information the python project needs to generate a report.
-- lib.rs has the functionality for generating and dumping markov data.
+- mkv.rs has the functionality for generating and dumping markov data.
 - build.rs converts csv strings to condensed .mkv format.
 ### Markov Format
 The .mkv format is designed to efficiently store data that can be used to generate words, using a markov algorithm. The format contains two types of bytes: Terminators (T) of all 0s, and Letter-Counts (LC), of three bits representing a number followed by 5 bits representing a character. The three-bit segment is offset by one, so 000 represents 1 and 111 represents 8. The 5-bit segment goes from a=1 to z=26, and 27 is used to signify the end of the word (';').
