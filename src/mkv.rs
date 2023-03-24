@@ -1,12 +1,14 @@
 use std::{collections::HashMap, fs};
 
-use rand::{distributions::WeightedIndex, rngs::ThreadRng, seq::SliceRandom, prelude::Distribution};
+use rand::{
+    distributions::WeightedIndex, prelude::Distribution, rngs::ThreadRng, seq::SliceRandom,
+};
 
 #[derive(Debug, Clone)]
 #[allow(clippy::type_complexity)]
 pub(crate) struct MarkovData {
     starts: Vec<(char, char)>,
-    map: HashMap<(char, char), (Vec<char>, Vec<u32>, WeightedIndex<u32>)>
+    map: HashMap<(char, char), (Vec<char>, Vec<u32>, WeightedIndex<u32>)>,
 }
 
 // for some reason it thinks this is dead even though it isn't
@@ -63,7 +65,9 @@ impl MarkovData {
                         let mut chars = word.chars();
                         (match chars.next() {
                             None => String::new(),
-                            Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                            Some(first) => {
+                                first.to_uppercase().collect::<String>() + chars.as_str()
+                            }
                         } + " ")
                     })
                     .collect::<String>(),
@@ -133,7 +137,8 @@ impl MarkovData {
                     });
                 }
             }
-            let mut intermediate_counts: HashMap<(char, char), (Vec<char>, Vec<u32>)> = HashMap::new();
+            let mut intermediate_counts: HashMap<(char, char), (Vec<char>, Vec<u32>)> =
+                HashMap::new();
             for (&(k, character), &amount) in counts.iter() {
                 intermediate_counts.insert(k, {
                     let mut vectors = match intermediate_counts.get(&k) {
@@ -145,7 +150,7 @@ impl MarkovData {
                     vectors
                 });
             }
-            MarkovData{
+            MarkovData {
                 starts,
                 map: intermediate_counts
                     .iter()
@@ -154,7 +159,7 @@ impl MarkovData {
                         Err(_) => None,
                     })
                     .collect(),
-                }
+            }
         }
     }
 
@@ -220,7 +225,7 @@ impl MarkovData {
             }
             intermediate_counts.insert(char_pair, weights.iter().copied().unzip());
         }
-        Some(Self{
+        Some(Self {
             starts,
             map: intermediate_counts
                 .iter()
@@ -229,7 +234,7 @@ impl MarkovData {
                     Err(_) => None,
                 })
                 .collect(),
-    })
+        })
     }
 }
 
@@ -244,16 +249,18 @@ fn char_to_byte((char, weight): (char, u8)) -> Option<u8> {
         println!("{} as u8 = {}", char, char as u8);
         return None;
     }
-    Some((weight.clamp(1, 8) - 1) * 32 + char_part)
+    Some(((weight.clamp(1, 8) - 1) << 5) + char_part)
 }
 
 fn byte_to_char(byte: u8) -> Option<(char, u32)> {
-    match 27.cmp(&(byte % 32)) {
+    match 27.cmp(&(byte & 0b00011111)) {
         std::cmp::Ordering::Less => {
             println!("{} - 31 as char = {}", byte, (byte - 31) as char);
             None
         }
-        std::cmp::Ordering::Equal => Some((';', (byte / 32 + 1) as u32)),
-        std::cmp::Ordering::Greater => Some(((byte % 32 + 95) as char, (byte / 32 + 1) as u32)),
+        std::cmp::Ordering::Equal => Some((';', ((byte >> 5) + 1) as u32)),
+        std::cmp::Ordering::Greater => {
+            Some((((byte & 0b00011111) + 95) as char, ((byte >> 5) + 1) as u32))
+        }
     }
 }
