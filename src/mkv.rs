@@ -97,7 +97,8 @@ impl MarkovData {
         {
             let mut counts: HashMap<((char, char), char), u32> = HashMap::new();
             let mut starts = Vec::new();
-            for string in strings {
+            for &string_mixedcase in strings {
+                let string = string_mixedcase.to_lowercase();
                 starts.push({
                     let mut chars = string.chars();
                     (
@@ -173,11 +174,15 @@ impl MarkovData {
         for (&(char1, char2), (characters, weights, _index)) in &self.map {
             bytes.push(char_to_byte((char1, 0)).unwrap());
             bytes.push(char_to_byte((char2, 0)).unwrap());
+            let weight_scale = *weights.iter().max().unwrap() / 8 + 1;
             for character_index in 0..characters.len() {
                 assert!(character_index < characters.len());
                 bytes.push(
-                    char_to_byte((characters[character_index], weights[character_index] as u8))
-                        .unwrap(),
+                    char_to_byte((
+                        characters[character_index],
+                        (weights[character_index] / weight_scale) as u8,
+                    ))
+                    .unwrap(),
                 );
             }
             bytes.push(0);
@@ -244,7 +249,7 @@ fn char_to_byte((char, weight): (char, u8)) -> Option<u8> {
     if char == ';' {
         char_part = 27;
     } else if char as u8 > 96 && (char as u8) < 123 {
-        char_part = char as u8 - 95;
+        char_part = char as u8 - 96;
     } else {
         println!("{} as u8 = {}", char, char as u8);
         return None;
@@ -254,13 +259,54 @@ fn char_to_byte((char, weight): (char, u8)) -> Option<u8> {
 
 fn byte_to_char(byte: u8) -> Option<(char, u32)> {
     match 27.cmp(&(byte & 0b00011111)) {
-        std::cmp::Ordering::Less => {
-            println!("{} - 31 as char = {}", byte, (byte - 31) as char);
-            None
-        }
+        std::cmp::Ordering::Less => None,
         std::cmp::Ordering::Equal => Some((';', ((byte >> 5) + 1) as u32)),
         std::cmp::Ordering::Greater => {
-            Some((((byte & 0b00011111) + 95) as char, ((byte >> 5) + 1) as u32))
+            Some((((byte & 0b00011111) + 96) as char, ((byte >> 5) + 1) as u32))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rand::thread_rng;
+
+    use super::MarkovData;
+
+    #[test]
+    fn byte_to_char() {
+        assert_eq!(super::byte_to_char(0b11100001), Some(('a', 8)));
+        assert_eq!(super::byte_to_char(0b00011010), Some(('z', 1)));
+        assert_eq!(super::byte_to_char(0b01111011), Some((';', 4)));
+        assert_eq!(super::byte_to_char(0b01111100), None);
+    }
+
+    #[test]
+    fn char_to_byte() {
+        assert_eq!(super::char_to_byte(('a', 8)), Some(0b11100001));
+        assert_eq!(super::char_to_byte(('z', 1)), Some(0b00011010));
+        assert_eq!(super::char_to_byte((';', 4)), Some(0b01111011));
+        assert_eq!(super::char_to_byte((' ', 4)), None);
+    }
+
+    #[test]
+    fn save_and_load() {
+        let mut rng = thread_rng();
+        let string_pool = ["strings"];
+
+        let initialized_markov = MarkovData::from_strings(&string_pool);
+        let bytes = initialized_markov.to_bytes();
+        let loaded_markov = MarkovData::from_bytes(bytes).unwrap();
+        assert_eq!(String::from("Strings "), loaded_markov.sample(&mut rng))
+    }
+
+    #[test]
+    fn capitalization_invariant() {
+        let mut rng = thread_rng();
+        let capital_pool = ["STRINGS"];
+        let lowercase_pool = ["strings"];
+        let capital_markov = MarkovData::from_strings(&capital_pool);
+        let lowercase_markov = MarkovData::from_strings(&lowercase_pool);
+        assert_eq!(capital_markov.sample(&mut rng), lowercase_markov.sample(&mut rng));
     }
 }
