@@ -261,9 +261,10 @@ fn byte_to_char(byte: u8) -> Option<(char, u32)> {
     match 27.cmp(&(byte & 0b00011111)) {
         std::cmp::Ordering::Less => None,
         std::cmp::Ordering::Equal => Some((';', ((byte >> 5) + 1) as u32)),
-        std::cmp::Ordering::Greater => {
-            Some((((byte & 0b00011111) + 96) as char, ((byte >> 5) + 1) as u32))
-        }
+        std::cmp::Ordering::Greater => match byte & 0b00011111 {
+            0 => None,
+            letter => Some(((letter + 96) as char, ((byte >> 5) + 1) as u32)),
+        },
     }
 }
 
@@ -276,9 +277,11 @@ mod tests {
     #[test]
     fn byte_to_char() {
         assert_eq!(super::byte_to_char(0b11100001), Some(('a', 8)));
+        assert_eq!(super::byte_to_char(0b00000001), Some(('a', 1)));
         assert_eq!(super::byte_to_char(0b00011010), Some(('z', 1)));
         assert_eq!(super::byte_to_char(0b01111011), Some((';', 4)));
         assert_eq!(super::byte_to_char(0b01111100), None);
+        assert_eq!(super::byte_to_char(0b00000000), None);
     }
 
     #[test]
@@ -307,6 +310,9 @@ mod tests {
         let lowercase_pool = ["strings"];
         let capital_markov = MarkovData::from_strings(&capital_pool);
         let lowercase_markov = MarkovData::from_strings(&lowercase_pool);
-        assert_eq!(capital_markov.sample(&mut rng), lowercase_markov.sample(&mut rng));
+        assert_eq!(
+            capital_markov.sample(&mut rng),
+            lowercase_markov.sample(&mut rng)
+        );
     }
 }
