@@ -224,7 +224,7 @@ impl MarkovData {
                     None => break,
                     Some(0) => break,
                     Some(&val) => {
-                        weights.push(byte_to_char(val).unwrap());
+                        weights.push(byte_to_char(val).map(|(c, u)| (c, u as u32)).unwrap());
                     }
                 }
             }
@@ -257,13 +257,15 @@ fn char_to_byte((char, weight): (char, u8)) -> Option<u8> {
     Some(((weight.clamp(1, 8) - 1) << 5) + char_part)
 }
 
-fn byte_to_char(byte: u8) -> Option<(char, u32)> {
+fn byte_to_char(byte: u8) -> Option<(char, u8)> {
+    use std::cmp::Ordering::*;
+
     match 27.cmp(&(byte & 0b00011111)) {
-        std::cmp::Ordering::Less => None,
-        std::cmp::Ordering::Equal => Some((';', ((byte >> 5) + 1) as u32)),
-        std::cmp::Ordering::Greater => match byte & 0b00011111 {
+        Less => None,
+        Equal => Some((';', (byte >> 5) + 1)),
+        Greater => match byte & 0b00011111 {
             0 => None,
-            letter => Some(((letter + 96) as char, ((byte >> 5) + 1) as u32)),
+            letter => Some(((letter + 96) as char, (byte >> 5) + 1)),
         },
     }
 }
@@ -276,20 +278,44 @@ mod tests {
 
     #[test]
     fn byte_to_char() {
-        assert_eq!(super::byte_to_char(0b11100001), Some(('a', 8)));
-        assert_eq!(super::byte_to_char(0b00000001), Some(('a', 1)));
-        assert_eq!(super::byte_to_char(0b00011010), Some(('z', 1)));
-        assert_eq!(super::byte_to_char(0b01111011), Some((';', 4)));
-        assert_eq!(super::byte_to_char(0b01111100), None);
-        assert_eq!(super::byte_to_char(0b00000000), None);
+        use super::byte_to_char;
+        assert_eq!(byte_to_char(0b11100001), Some(('a', 8)));
+        assert_eq!(byte_to_char(0b00000001), Some(('a', 1)));
+        assert_eq!(byte_to_char(0b00011010), Some(('z', 1)));
+        assert_eq!(byte_to_char(0b01111011), Some((';', 4)));
+        assert_eq!(byte_to_char(0b01111100), None);
+        assert_eq!(byte_to_char(0b00000000), None);
     }
 
     #[test]
     fn char_to_byte() {
-        assert_eq!(super::char_to_byte(('a', 8)), Some(0b11100001));
-        assert_eq!(super::char_to_byte(('z', 1)), Some(0b00011010));
-        assert_eq!(super::char_to_byte((';', 4)), Some(0b01111011));
-        assert_eq!(super::char_to_byte((' ', 4)), None);
+        use super::char_to_byte;
+        assert_eq!(char_to_byte(('a', 8)), Some(0b11100001));
+        assert_eq!(char_to_byte(('z', 1)), Some(0b00011010));
+        assert_eq!(char_to_byte((';', 4)), Some(0b01111011));
+        assert_eq!(char_to_byte((' ', 4)), None);
+        assert_eq!(char_to_byte(('`', 8)), None);
+    }
+
+    #[test]
+    fn inverse_function() {
+        use super::{byte_to_char, char_to_byte};
+        assert_eq!(
+            char_to_byte(byte_to_char(0b11100001).unwrap()),
+            Some(0b11100001)
+        );
+        assert_eq!(
+            byte_to_char(char_to_byte(('a', 4)).unwrap()),
+            Some(('a', 4))
+        );
+        assert_eq!(
+            char_to_byte(byte_to_char(0b11111011).unwrap()),
+            Some(0b11111011)
+        );
+        assert_eq!(
+            byte_to_char(char_to_byte((';', 4)).unwrap()),
+            Some((';', 4))
+        );
     }
 
     #[test]
