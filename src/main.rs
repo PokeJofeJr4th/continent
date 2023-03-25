@@ -18,6 +18,8 @@ use Terrain::*;
 mod mkv;
 use crate::mkv::MarkovData;
 
+#[warn(clippy::pedantic)]
+
 fn get_adj(center: usize, radius: usize) -> Vec<usize> {
     if radius == 0 {
         vec![
@@ -28,8 +30,8 @@ fn get_adj(center: usize, radius: usize) -> Vec<usize> {
         ]
     } else {
         let mut adj: Vec<usize> = Vec::new();
-        for x in 0..(2 * radius + 1) {
-            for y in 0..(2 * radius + 1) {
+        for x in 0..=(2 * radius) {
+            for y in 0..=(2 * radius) {
                 if (x, y) == (radius, radius) {
                     continue;
                 }

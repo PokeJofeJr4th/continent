@@ -4,6 +4,8 @@ use rand::{
     distributions::WeightedIndex, prelude::Distribution, rngs::ThreadRng, seq::SliceRandom,
 };
 
+#[warn(clippy::pedantic)]
+
 #[derive(Debug, Clone)]
 #[allow(clippy::type_complexity)]
 pub(crate) struct MarkovData {
@@ -315,6 +317,10 @@ mod tests {
         assert_eq!(
             byte_to_char(char_to_byte((';', 4)).unwrap()),
             Some((';', 4))
+        );
+        assert_eq!(
+            byte_to_char(char_to_byte(('z', 40)).unwrap()),
+            Some(('z', 8))
         );
     }
 

@@ -5,6 +5,8 @@ mod mkv;
 
 use mkv::MarkovData;
 
+#[warn(clippy::pedantic)]
+
 fn main() {
     println!("cargo:rerun-if-changed=markov/");
     println!("cargo:rerun-if-changed=csv/");
