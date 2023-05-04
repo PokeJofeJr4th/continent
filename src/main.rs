@@ -1,24 +1,32 @@
 use json::*;
-use rand::distributions::WeightedIndex;
-use rand::prelude::*;
-use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use std::cmp::min;
 use std::collections::HashMap;
-use std::fmt::Display;
 use std::fs::File;
 use std::io::Read;
 use std::slice::Iter;
-use std::{fmt, fs};
+use std::{fmt, fs, env};
 use strum::*;
 
 use Skill::*;
 use Terrain::*;
 
 mod mkv;
-use crate::mkv::MarkovData;
+use mkv::MarkovData;
 
 #[warn(clippy::pedantic)]
+
+macro_rules! mut_loop {
+    ($original_list: expr => for $item: ident in $list: ident $func: expr) => {
+        let mut $list = std::mem::take(&mut $original_list);
+        for _ in 0..$list.len() {
+            let $item = $list.pop().unwrap();
+            $func
+            $list.insert(0, $item);
+        }
+        $original_list = $list;
+    };
+}
 
 fn get_adj(center: usize, radius: usize) -> Vec<usize> {
     if radius == 0 {
@@ -37,7 +45,7 @@ fn get_adj(center: usize, radius: usize) -> Vec<usize> {
                 }
                 let positive = center + x + y * CONFIG.world_size.0;
                 let negative = radius * (1 + CONFIG.world_size.0);
-                if negative > positive {
+                if negative > positive || (center / CONFIG.world_size.0) + y < radius {
                     continue;
                 }
                 let adj_index: usize = positive - negative;
@@ -301,18 +309,18 @@ impl Terrain {
     }
 }
 
-impl Display for Terrain {
+impl fmt::Display for Terrain {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
             "{}",
             match self {
-                Ocean => '~',
-                Plain => '%',
-                Forest => '♣',
-                Mountain => 'ߍ',
-                Desert => '#',
-                Jungle => '♠',
+                Ocean => "\x1b[48;5;18m~",
+                Plain => "\x1b[48;5;100m%",
+                Forest => "\x1b[48;5;22m♧",
+                Mountain => "\x1b[48;5;8m◮",
+                Desert => "\x1b[48;5;214m#",
+                Jungle => "\x1b[48;5;34m♤",
             }
         )
     }
@@ -609,9 +617,9 @@ impl City<'_> {
         // IMPORTANT: During the loop, the city's npcs list is empty
         let mut npcs = std::mem::take(&mut self.npcs);
         let mut living_npcs: Vec<&mut Npc> = npcs.iter_mut().filter(|npc| npc.alive).collect();
-        for npc in &mut living_npcs {
+        mut_loop!(living_npcs => for npc in list {
             self.tick_npc(npc, rng, current_year);
-        }
+        });
         if living_npcs.len() < 3 {
             npcs.push(self.generate_npc(rng, current_year))
         }
@@ -833,24 +841,27 @@ fn main() {
     // println!("Region Map: {:?}\nRegion List: {:?}", region_map, region_list);
     for y in 0..CONFIG.world_size.1 {
         for x in 0..CONFIG.world_size.0 {
-            if city_list
-                .iter()
-                .any(|(&pos, _c)| pos == x + y * CONFIG.world_size.0)
-            {
-                print!("O");
-            } else {
-                print!(" ");
-            }
             print!(
                 "{}",
                 region_list[region_map[CONFIG.world_size.0 * y + x]].terrain
             );
+            if city_list
+                .iter()
+                .any(|(&pos, _c)| pos == x + y * CONFIG.world_size.0)
+            {
+                print!("O\x1b[0m");
+            } else {
+                print!(" \x1b[0m");
+            }
         }
         println!();
     }
-    let mut current_year: u32 = 0;
-    for _ in 0..1000 {
-        current_year += 1;
+    // If a year count is provided, use it. Otherwise, just simulate 1000 years
+    let year_count: u32 = match env::args().nth(1).map(|arg| arg.parse::<u32>()) {
+        Some(Ok(year)) => year,
+        _ => 1000,
+    };
+    for current_year in 0..=year_count {
         if current_year % 100 == 0 {
             println!("{current_year}");
         }
@@ -872,7 +883,7 @@ fn main() {
     // println!("{city_list:?}");
     fs::write(
         "./saves/foo.json",
-        to_json(&region_list, city_list, &trade_connections, current_year).dump(),
+        to_json(&region_list, city_list, &trade_connections, year_count).dump(),
     )
     .expect("Unable to write file");
 }
