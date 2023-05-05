@@ -221,48 +221,45 @@ impl From<Terrain> for JsonValue {
     }
 }
 
-fn to_json(
-    region_list: &[Region],
-    city_list: HashMap<usize, City>,
-    trade_connections: &HashMap<(usize, usize), i32>,
-    current_year: u32,
-) -> json::JsonValue {
-    macro_rules! item_type {
-        ($type: ident) => {
-            $type::iter()
-                .map(|a| (String::from(a.as_ref()), vec![1, 1, 1, 1]))
-                .collect::<HashMap<String, Vec<i32>>>()
-        };
-    }
+impl From<World<'_>> for JsonValue {
+    fn from(value: World) -> Self {
+        macro_rules! item_type {
+            ($type: ident) => {
+                $type::iter()
+                    .map(|a| (String::from(a.as_ref()), vec![1, 1, 1, 1]))
+                    .collect::<HashMap<String, Vec<i32>>>()
+            };
+        }
 
-    json::object! {
-        file_type: "save",
-        RegionList: region_list,
-        CityList: city_list.values().map(|city| JsonValue::from(city.clone())).collect::<Vec<JsonValue>>(),
-        trade_connections: trade_connections.iter().map(|((first, second), &strength)| (format!("[{}, {}, {}, {}]", first % CONFIG.world_size.0, first / CONFIG.world_size.0, second % CONFIG.world_size.0, second / CONFIG.world_size.0), strength)).collect::<HashMap<String, i32>>(),
-        Biomes: {
-            Desert: Desert,
-            Forest: Forest,
-            Jungle: Jungle,
-            Mountain: Mountain,
-            Ocean: Ocean,
-            Plain: Plain},
-        Items: {
-            Animals: item_type!(Animal),
-            Plants: item_type!(Plant),
-            Gems: item_type!(Gem),
-            Metals: item_type!(Metal)
-        },
-        Magic: {
-            Material: ["Osmin", [1, 2, 9], "Metal"],
-            Localization: "Ubiquitous",
-            Name: "Supen",
-            Abilities: [
-                {Type: "Combat", Component: "Gem", Strength: 2, "Min Level": 2}
-                ]
-        },
-        current_year: current_year,
-        Config: CONFIG.clone()
+        json::object! {
+            file_type: "save",
+            RegionList: value.region_list,
+            CityList: value.city_list.values().map(|city| JsonValue::from(city.clone())).collect::<Vec<JsonValue>>(),
+            trade_connections: value.trade_connections.iter().map(|((first, second), &strength)| (format!("[{}, {}, {}, {}]", first % CONFIG.world_size.0, first / CONFIG.world_size.0, second % CONFIG.world_size.0, second / CONFIG.world_size.0), strength)).collect::<HashMap<String, i32>>(),
+            Biomes: {
+                Desert: Desert,
+                Forest: Forest,
+                Jungle: Jungle,
+                Mountain: Mountain,
+                Ocean: Ocean,
+                Plain: Plain},
+            Items: {
+                Animals: item_type!(Animal),
+                Plants: item_type!(Plant),
+                Gems: item_type!(Gem),
+                Metals: item_type!(Metal)
+            },
+            Magic: {
+                Material: ["Osmin", [1, 2, 9], "Metal"],
+                Localization: "Ubiquitous",
+                Name: "Supen",
+                Abilities: [
+                    {Type: "Combat", Component: "Gem", Strength: 2, "Min Level": 2}
+                    ]
+            },
+            current_year: value.current_year,
+            Config: value.config
+        }
     }
 }
 
@@ -747,7 +744,7 @@ impl City<'_> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct Config {
     gen_radius: usize,
     world_size: (usize, usize),
@@ -771,6 +768,35 @@ static CONFIG: Config = Config {
     trade_volume: 50.0,
     trade_quantity: 20,
 };
+
+struct World<'a> {
+    config: Config,
+    current_year: u32,
+    // region_map: Vec<usize>,
+    region_list: Vec<Region>,
+    city_list: HashMap<usize, City<'a>>,
+    trade_connections: HashMap<(usize, usize), i32>,
+    trade_connections_list: Vec<(usize, usize)>,
+}
+
+impl World<'_> {
+    fn tick(&mut self, rng: &mut ThreadRng) {
+        for city in self.city_list.values_mut() {
+            city.tick(rng, self.current_year);
+        }
+        for _ in 0..self.config.trade_quantity {
+            let _ = handle_trade(
+                match self.trade_connections_list.choose(rng) {
+                    Some(&res) => res,
+                    None => continue,
+                },
+                &mut self.city_list,
+                &mut self.trade_connections,
+            );
+        }
+        self.current_year += 1;
+    }
+}
 
 fn main() {
     unsafe {
@@ -821,7 +847,7 @@ fn main() {
     // println!("{}", markov_data_metal.sample(&mut rng));
     // println!("{markov_data:?}");
     let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster);
-    let (mut city_list, mut trade_connections) =
+    let (city_list, trade_connections) =
         generate_cities(&region_map, &region_list, &mut rng, &markov_data_name);
     // println!("{trade_connections:?}");
     let trade_connections_list: Vec<(usize, usize)> =
@@ -857,6 +883,15 @@ fn main() {
         _ => 1000,
     };
     let year_delimiter: u32 = year_count / 100;
+    let mut world: World = World {
+        config: CONFIG,
+        current_year: 0,
+        // region_map,
+        region_list,
+        city_list,
+        trade_connections,
+        trade_connections_list,
+    };
     println!(
         "{}",
         String::from("╔")
@@ -872,27 +907,11 @@ fn main() {
             print!("\x1b[32m\x1b[C█\x1b[D\x1b[0m");
             std::io::stdout().flush().unwrap();
         }
-        for city in city_list.values_mut() {
-            city.tick(&mut rng, current_year);
-        }
-        for _ in 0..CONFIG.trade_quantity {
-            let _ = handle_trade(
-                match trade_connections_list.choose(&mut rng) {
-                    Some(&res) => res,
-                    None => continue,
-                },
-                &mut city_list,
-                &mut trade_connections,
-            );
-        }
+        world.tick(&mut rng);
         // println!("{current_year}");
     }
     // println!("{city_list:?}");
-    fs::write(
-        "./saves/foo.json",
-        to_json(&region_list, city_list, &trade_connections, year_count).dump(),
-    )
-    .expect("Unable to write file");
+    fs::write("./saves/foo.json", JsonValue::from(world).dump()).expect("Unable to write file");
 }
 
 fn build_region_map(
