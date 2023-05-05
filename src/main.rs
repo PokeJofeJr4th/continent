@@ -772,7 +772,7 @@ static CONFIG: Config = Config {
 struct World<'a> {
     config: Config,
     current_year: u32,
-    // region_map: Vec<usize>,
+    region_map: Vec<usize>,
     region_list: Vec<Region>,
     city_list: HashMap<usize, City<'a>>,
     trade_connections: HashMap<(usize, usize), i32>,
@@ -844,20 +844,35 @@ fn main() {
         // markov_data_plant from "markov/plant.mkv"
     }
 
-    // println!("{}", markov_data_metal.sample(&mut rng));
-    // println!("{markov_data:?}");
-    let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster);
-    let (city_list, trade_connections) =
-        generate_cities(&region_map, &region_list, &mut rng, &markov_data_name);
-    // println!("{trade_connections:?}");
-    let trade_connections_list: Vec<(usize, usize)> =
-        trade_connections.iter().map(|(&k, _v)| k).collect();
-    // println!("Region Map: {:?}\nRegion List: {:?}", region_map, region_list);
-    for y in 0..CONFIG.world_size.1 {
+    // If a year count is provided, use it. Otherwise, just simulate 1000 years
+    let year_count: u32 = match env::args().nth(1).map(|arg| arg.parse::<u32>()) {
+        Some(Ok(year)) => year,
+        _ => 1000,
+    };
+    let year_delimiter: u32 = year_count / 100;
+
+    let mut world = {
+        let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster);
+        let (city_list, trade_connections) =
+            generate_cities(&region_map, &region_list, &mut rng, &markov_data_name);
+        let trade_connections_list: Vec<(usize, usize)> =
+            trade_connections.iter().map(|(&k, _v)| k).collect();
+        World {
+            config: CONFIG,
+            current_year: 0,
+            region_map,
+            region_list,
+            city_list,
+            trade_connections,
+            trade_connections_list,
+        }
+    };
+
+    for y in 0..world.config.world_size.1 {
         for x in 0..CONFIG.world_size.0 {
             print!(
                 "{}",
-                match region_list[region_map[CONFIG.world_size.0 * y + x]].terrain {
+                match world.region_list[world.region_map[world.config.world_size.0 * y + x]].terrain {
                     Ocean => "\x1b[48;5;18m~",
                     Plain => "\x1b[48;5;100m%",
                     Forest => "\x1b[48;5;22m♧",
@@ -866,9 +881,9 @@ fn main() {
                     Jungle => "\x1b[48;5;34m♤",
                 }
             );
-            if city_list
+            if world.city_list
                 .iter()
-                .any(|(&pos, _c)| pos == x + y * CONFIG.world_size.0)
+                .any(|(&pos, _c)| pos == x + y * world.config.world_size.0)
             {
                 print!("O\x1b[0m");
             } else {
@@ -877,21 +892,6 @@ fn main() {
         }
         println!();
     }
-    // If a year count is provided, use it. Otherwise, just simulate 1000 years
-    let year_count: u32 = match env::args().nth(1).map(|arg| arg.parse::<u32>()) {
-        Some(Ok(year)) => year,
-        _ => 1000,
-    };
-    let year_delimiter: u32 = year_count / 100;
-    let mut world: World = World {
-        config: CONFIG,
-        current_year: 0,
-        // region_map,
-        region_list,
-        city_list,
-        trade_connections,
-        trade_connections_list,
-    };
     println!(
         "{}",
         String::from("╔")
