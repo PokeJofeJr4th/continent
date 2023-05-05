@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use std::slice::Iter;
-use std::{fmt, fs, env};
+use std::{env, fmt, fs};
 use strum::*;
 
 use Skill::*;
@@ -68,6 +68,7 @@ fn distance(a: usize, b: usize) -> f32 {
 }
 
 fn inverse_add(a: f32, b: f32) -> f32 {
+    // println!("{a} !+ {b} = {}", (a * b) / (a + b));
     (a * b) / (a + b)
 }
 
@@ -309,23 +310,6 @@ impl Terrain {
     }
 }
 
-impl fmt::Display for Terrain {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Ocean => "\x1b[48;5;18m~",
-                Plain => "\x1b[48;5;100m%",
-                Forest => "\x1b[48;5;22m♧",
-                Mountain => "\x1b[48;5;8m◮",
-                Desert => "\x1b[48;5;214m#",
-                Jungle => "\x1b[48;5;34m♤",
-            }
-        )
-    }
-}
-
 #[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
 enum Plant {
     Apple,
@@ -414,8 +398,7 @@ impl Default for Inventory {
 
 impl Inventory {
     fn get(&self, i: usize) -> f32 {
-        let result = self.0.get(i);
-        match result {
+        match self.0.get(i) {
             None => 0.0,
             Some(&res) => {
                 assert!(!res.is_nan());
@@ -533,7 +516,7 @@ impl City<'_> {
         for item in 0..ITEM_COUNT {
             let production = {
                 let production = inverse_add(
-                    self.population as f32 * 2.0,
+                    self.population as f32 * 1.0,
                     self.resource_gathering.get(item) * CONFIG.production_constant,
                 )
                 .floor();
@@ -562,7 +545,7 @@ impl City<'_> {
             .map(|(item, &amount)| {
                 let mut demand = 0.0;
                 match item.into() {
-                    Item::Plant(_) | Item::Fish => {
+                    Item::Plant(_) | Item::Fish | Item::Meat(_) => {
                         demand += (self.population as f32) * amount / total_food_resources
                     }
                     _ => {}
@@ -589,18 +572,23 @@ impl City<'_> {
                             self.population as f32 - amount
                         }
                     };
-                    price * 1.1f32.powf(exp)
+                    let val = price * 1.1f32.powf(exp);
+                    if val.is_nan() {
+                        0.0
+                    } else {
+                        val
+                    }
                 })
                 .collect(),
         );
-        self.resources = Inventory(
-            self.resources
-                .iter()
-                .enumerate()
-                .map(|(item, &amount)| (amount - demand[item]).clamp(0.0, f32::MAX))
-                .collect(),
-        );
+        for (item, amount) in self.resources.0.iter_mut().enumerate() {
+            *amount = (*amount - demand[item]).clamp(0.0, f32::MAX);
+        }
         let net_food = total_food_resources - self.population as f32;
+        // println!(
+        //     "{} food for {} people => {} net food",
+        //     total_food_resources, self.population, net_food
+        // );
 
         self.population += {
             let diff = net_food * CONFIG.population_constant;
@@ -777,7 +765,7 @@ static CONFIG: Config = Config {
     world_size: (40, 30),
     coastal_city_density: 0.15,
     inland_city_density: 0.02,
-    production_constant: 100.0,
+    production_constant: 60.0,
     population_constant: 0.0001,
     notable_npc_threshold: 5,
     trade_volume: 50.0,
@@ -815,22 +803,22 @@ fn main() {
             $(
                 let mut buf = Vec::new();
                 let mut f = File::open($path).unwrap();
-            f.read_to_end(&mut buf).unwrap();
-            let $markov_data = MarkovData::from_bytes(buf).unwrap();)*
-        };
-    }
+                f.read_to_end(&mut buf).unwrap();
+                let $markov_data = MarkovData::from_bytes(buf).unwrap();)*
+            };
+        }
 
     markov_data! {
         // markov_data_animal from "markov/animal.mkv",
         // markov_data_gemstone from "markov/gemstone.mkv",
         // markov_data_magic from "markov/magic.mkv",
-        markov_data_metal from "markov/metal.mkv",
+        // markov_data_metal from "markov/metal.mkv",
         markov_data_monster from "markov/monster.mkv",
         markov_data_name from "markov/name.mkv"
         // markov_data_plant from "markov/plant.mkv"
     }
 
-    println!("{}", markov_data_metal.sample(&mut rng));
+    // println!("{}", markov_data_metal.sample(&mut rng));
     // println!("{markov_data:?}");
     let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster);
     let (mut city_list, mut trade_connections) =
@@ -843,7 +831,14 @@ fn main() {
         for x in 0..CONFIG.world_size.0 {
             print!(
                 "{}",
-                region_list[region_map[CONFIG.world_size.0 * y + x]].terrain
+                match region_list[region_map[CONFIG.world_size.0 * y + x]].terrain {
+                    Ocean => "\x1b[48;5;18m~",
+                    Plain => "\x1b[48;5;100m%",
+                    Forest => "\x1b[48;5;22m♧",
+                    Mountain => "\x1b[48;5;8m◮",
+                    Desert => "\x1b[48;5;214m#",
+                    Jungle => "\x1b[48;5;34m♤",
+                }
             );
             if city_list
                 .iter()
@@ -861,8 +856,9 @@ fn main() {
         Some(Ok(year)) => year,
         _ => 1000,
     };
+    let year_delimiter: u32 = year_count / 100;
     for current_year in 0..=year_count {
-        if current_year % 100 == 0 {
+        if current_year % year_delimiter == 0 {
             println!("{current_year}");
         }
         for city in city_list.values_mut() {
