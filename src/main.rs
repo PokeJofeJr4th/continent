@@ -1,3 +1,4 @@
+use json::object::Object;
 use json::*;
 use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use std::cmp::min;
@@ -28,13 +29,13 @@ macro_rules! mut_loop {
     };
 }
 
-fn get_adj(center: usize, radius: usize) -> Vec<usize> {
+fn get_adj(center: usize, radius: usize, config: &Config) -> Vec<usize> {
     if radius == 0 {
         vec![
             center + 1,
             center - 1,
-            center + CONFIG.world_size.0,
-            center - CONFIG.world_size.0,
+            center + config.world_size.0,
+            center - config.world_size.0,
         ]
     } else {
         let mut adj: Vec<usize> = Vec::new();
@@ -43,15 +44,15 @@ fn get_adj(center: usize, radius: usize) -> Vec<usize> {
                 if (x, y) == (radius, radius) {
                     continue;
                 }
-                let positive = center + x + y * CONFIG.world_size.0;
-                let negative = radius * (1 + CONFIG.world_size.0);
-                if negative > positive || (center / CONFIG.world_size.0) + y < radius {
+                let positive = center + x + y * config.world_size.0;
+                let negative = radius * (1 + config.world_size.0);
+                if negative > positive || (center / config.world_size.0) + y < radius {
                     continue;
                 }
                 let adj_index: usize = positive - negative;
-                if adj_index < CONFIG.world_size.0 * CONFIG.world_size.1
-                    && (adj_index / CONFIG.world_size.0
-                        == (center / CONFIG.world_size.0) + y - radius)
+                if adj_index < config.world_size.0 * config.world_size.1
+                    && (adj_index / config.world_size.0
+                        == (center / config.world_size.0) + y - radius)
                 {
                     adj.push(adj_index);
                 }
@@ -61,9 +62,9 @@ fn get_adj(center: usize, radius: usize) -> Vec<usize> {
     }
 }
 
-fn distance(a: usize, b: usize) -> f32 {
-    ((((a / CONFIG.world_size.0) as i32 - (b / CONFIG.world_size.0) as i32).pow(2)
-        + ((a % CONFIG.world_size.0) as i32 - (b % CONFIG.world_size.0) as i32).pow(2)) as f32)
+fn distance(a: usize, b: usize, config: &Config) -> f32 {
+    ((((a / config.world_size.0) as i32 - (b / config.world_size.0) as i32).pow(2)
+        + ((a % config.world_size.0) as i32 - (b % config.world_size.0) as i32).pow(2)) as f32)
         .sqrt()
 }
 
@@ -72,15 +73,33 @@ fn inverse_add(a: f32, b: f32) -> f32 {
     (a * b) / (a + b)
 }
 
-fn usize_to_vec(index: usize) -> Vec<usize> {
-    vec![index % CONFIG.world_size.0, index / CONFIG.world_size.0]
+fn usize_to_vec(index: usize, config: Config) -> Vec<usize> {
+    vec![index % config.world_size.0, index / config.world_size.0]
 }
 
-impl From<Inventory> for JsonValue {
-    fn from(inventory: Inventory) -> JsonValue {
+trait Jsonizable {
+    fn jsonize(&self, config: Config) -> JsonValue;
+}
+
+impl<T: Jsonizable> Jsonizable for Vec<T> {
+    fn jsonize(&self, config: Config) -> JsonValue {
+        JsonValue::Array(self.iter().map(|i| i.jsonize(config)).collect())
+    }
+}
+
+impl<T: Jsonizable> Jsonizable for HashMap<String, T> {
+    fn jsonize(&self, config: Config) -> JsonValue {
+        let mut object = Object::new();
+        self.iter()
+            .for_each(|(key, value)| object.insert(key, value.jsonize(config)));
+        JsonValue::Object(object)
+    }
+}
+
+impl Jsonizable for Inventory {
+    fn jsonize(&self, _config: Config) -> JsonValue {
         JsonValue::from(
-            inventory
-                .iter()
+            self.iter()
                 .enumerate()
                 .filter_map(|(index, &amount)| {
                     if amount == 0.0 {
@@ -94,88 +113,88 @@ impl From<Inventory> for JsonValue {
     }
 }
 
-impl From<Region> for JsonValue {
-    fn from(region: Region) -> JsonValue {
+impl Jsonizable for Region {
+    fn jsonize(&self, config: Config) -> JsonValue {
         object! {
-            id: region.id,
-            tiles: region.tiles.iter().map(|&tile| usize_to_vec(tile)).collect::<Vec<Vec<usize>>>(),
-            resources: region.resources,
-            terrain: region.terrain.as_ref(),
-            adjacent_regions: region.adjacent_regions,
+            id: self.id,
+            tiles: self.tiles.iter().map(|&tile| usize_to_vec(tile, config)).collect::<Vec<Vec<usize>>>(),
+            resources: self.resources.jsonize(config),
+            terrain: self.terrain.as_ref(),
+            adjacent_regions: self.adjacent_regions.clone(),
             ancestor_race: "Human",
             demographics: object!{Human: 1.0},
-            monster: region.monster
+            monster: self.monster.clone().map(|m| m.jsonize(config))
         }
     }
 }
 
-impl From<Monster> for JsonValue {
-    fn from(monster: Monster) -> JsonValue {
+impl Jsonizable for Monster {
+    fn jsonize(&self, config: Config) -> JsonValue {
         object! {
-            name: monster.name,
-            species: monster.species,
-            desc: monster.desc,
-            inventory: monster.inventory,
-            alive: monster.alive,
-            location: usize_to_vec(monster.location)
+            name: self.name.clone(),
+            species: self.species.clone(),
+            desc: self.desc.clone(),
+            inventory: self.inventory.jsonize(config),
+            alive: self.alive,
+            location: usize_to_vec(self.location, config)
         }
     }
 }
 
-impl From<Snapshot> for JsonValue {
-    fn from(snapshot: Snapshot) -> JsonValue {
+impl Jsonizable for Snapshot {
+    fn jsonize(&self, config: Config) -> JsonValue {
         object! {
-            population: snapshot.population,
-            production: snapshot.production,
-            imports: snapshot.imports
+            population: self.population,
+            production: self.production.jsonize(config),
+            imports: self.imports.jsonize(config)
         }
     }
 }
 
-impl From<Npc> for JsonValue {
-    fn from(npc: Npc) -> JsonValue {
+impl Jsonizable for Npc {
+    fn jsonize(&self, config: Config) -> JsonValue {
         object! {
-            name: npc.name,
-            title: npc.title,
-            pos: usize_to_vec(npc.pos),
-            origin: usize_to_vec(npc.origin),
-            birth: npc.birth,
-            age: npc.age,
+            name: self.name.clone(),
+            title: self.title.clone(),
+            pos: usize_to_vec(self.pos, config),
+            origin: usize_to_vec(self.origin, config),
+            birth: self.birth,
+            age: self.age,
             race: "Human",
-            alive: npc.alive,
+            alive: self.alive,
             skills: object!{},
             inventory: object!{},
-            life: npc.life,
+            life: self.life.jsonize(config),
             reputation: 10,
-            skills: npc.skills,
+            skills: self.skills.clone(),
         }
     }
 }
 
-impl From<HistoricalEvent> for JsonValue {
-    fn from(value: HistoricalEvent) -> Self {
+impl Jsonizable for HistoricalEvent {
+    fn jsonize(&self, _config: Config) -> JsonValue {
         object! {
             Type: "Event",
-            Time: value.time,
-            Desc: value.description
+            Time: self.time,
+            Desc: self.description.clone()
         }
     }
 }
 
-impl From<City<'_>> for JsonValue {
-    fn from(city: City) -> JsonValue {
+impl Jsonizable for City<'_> {
+    fn jsonize(&self, config: Config) -> JsonValue {
         object! {
-            pos: usize_to_vec(city.pos),
-            name: city.name,
-            population: city.population,
+            pos: usize_to_vec(self.pos, config),
+            name: self.name.clone(),
+            population: self.population,
             homunculi: 0,
-            NPCs: city.npcs,
-            data: city.data,
-            imports: city.imports,
-            production: city.production,
-            resources: city.resources,
-            economy: city.economy,
-            resource_gathering: city.resource_gathering,
+            NPCs: self.npcs.jsonize(config),
+            data: self.data.jsonize(config),
+            imports: self.imports.jsonize(config),
+            production: self.production.jsonize(config),
+            resources: self.resources.jsonize(config),
+            economy: self.economy.jsonize(config),
+            resource_gathering: self.resource_gathering.jsonize(config),
             history: array![],
             trade: array![],
             artifacts: array![],
@@ -221,8 +240,8 @@ impl From<Terrain> for JsonValue {
     }
 }
 
-impl From<World<'_>> for JsonValue {
-    fn from(value: World) -> Self {
+impl Jsonizable for World<'_> {
+    fn jsonize(&self, config: Config) -> JsonValue {
         macro_rules! item_type {
             ($type: ident) => {
                 $type::iter()
@@ -233,9 +252,9 @@ impl From<World<'_>> for JsonValue {
 
         json::object! {
             file_type: "save",
-            RegionList: value.region_list,
-            CityList: value.city_list.values().map(|city| JsonValue::from(city.clone())).collect::<Vec<JsonValue>>(),
-            trade_connections: value.trade_connections.iter().map(|((first, second), &strength)| (format!("[{}, {}, {}, {}]", first % CONFIG.world_size.0, first / CONFIG.world_size.0, second % CONFIG.world_size.0, second / CONFIG.world_size.0), strength)).collect::<HashMap<String, i32>>(),
+            RegionList: self.region_list.jsonize(config),
+            CityList: self.city_list.values().map(|city| city.clone()).collect::<Vec<City>>().jsonize(config),
+            trade_connections: self.trade_connections.iter().map(|((first, second), &strength)| (format!("[{}, {}, {}, {}]", first % config.world_size.0, first / config.world_size.0, second % config.world_size.0, second / config.world_size.0), strength)).collect::<HashMap<String, i32>>(),
             Biomes: {
                 Desert: Desert,
                 Forest: Forest,
@@ -257,8 +276,8 @@ impl From<World<'_>> for JsonValue {
                     {Type: "Combat", Component: "Gem", Strength: 2, "Min Level": 2}
                     ]
             },
-            current_year: value.current_year,
-            Config: value.config
+            current_year: self.current_year,
+            Config: self.config
         }
     }
 }
@@ -493,7 +512,7 @@ struct City<'a> {
 }
 
 impl City<'_> {
-    fn tick(&mut self, rng: &mut ThreadRng, current_year: u32) {
+    fn tick(&mut self, rng: &mut ThreadRng, current_year: u32, config: &Config) {
         // Save data
         if current_year % 100 == 0 {
             self.data.insert(
@@ -514,7 +533,7 @@ impl City<'_> {
             let production = {
                 let production = inverse_add(
                     self.population as f32 * 1.0,
-                    self.resource_gathering.get(item) * CONFIG.production_constant,
+                    self.resource_gathering.get(item) * config.production_constant,
                 )
                 .floor();
                 if production.is_nan() {
@@ -588,7 +607,7 @@ impl City<'_> {
         // );
 
         self.population += {
-            let diff = net_food * CONFIG.population_constant;
+            let diff = net_food * config.population_constant;
             diff.floor() as i32 + {
                 if rng.gen::<f32>() < (diff - diff.floor()) {
                     1
@@ -603,7 +622,7 @@ impl City<'_> {
         let mut npcs = std::mem::take(&mut self.npcs);
         let mut living_npcs: Vec<&mut Npc> = npcs.iter_mut().filter(|npc| npc.alive).collect();
         mut_loop!(living_npcs => for npc in list {
-            self.tick_npc(npc, rng, current_year);
+            self.tick_npc(npc, rng, current_year, &config);
         });
         if living_npcs.len() < 3 {
             npcs.push(self.generate_npc(rng, current_year))
@@ -611,7 +630,7 @@ impl City<'_> {
         self.npcs = npcs;
     }
 
-    fn tick_npc(&mut self, npc: &mut Npc, rng: &mut ThreadRng, current_year: u32) {
+    fn tick_npc(&mut self, npc: &mut Npc, rng: &mut ThreadRng, current_year: u32, config: &Config) {
         npc.age += 1;
         // Die of old age
         if npc.age > 80 {
@@ -619,10 +638,10 @@ impl City<'_> {
             return;
         }
         // Traveling
-        let traveler_options: Vec<usize> = get_adj(npc.pos, 1)
+        let traveler_options: Vec<usize> = get_adj(npc.pos, 1, config)
             .iter()
             .filter_map(|&point| {
-                let dist = distance(point, npc.origin);
+                let dist = distance(point, npc.origin, config);
                 if dist == 0.0 {
                     if rng.gen::<f32>() < ((50.0 - npc.age as f32) / npc.age as f32) {
                         None
@@ -757,18 +776,6 @@ struct Config {
     trade_quantity: i32,
 }
 
-static CONFIG: Config = Config {
-    gen_radius: 3,
-    world_size: (40, 30),
-    coastal_city_density: 0.15,
-    inland_city_density: 0.02,
-    production_constant: 60.0,
-    population_constant: 0.0001,
-    notable_npc_threshold: 5,
-    trade_volume: 50.0,
-    trade_quantity: 20,
-};
-
 struct World<'a> {
     config: Config,
     current_year: u32,
@@ -782,7 +789,7 @@ struct World<'a> {
 impl World<'_> {
     fn tick(&mut self, rng: &mut ThreadRng) {
         for city in self.city_list.values_mut() {
-            city.tick(rng, self.current_year);
+            city.tick(rng, self.current_year, &self.config);
         }
         for _ in 0..self.config.trade_quantity {
             let _ = handle_trade(
@@ -792,6 +799,7 @@ impl World<'_> {
                 },
                 &mut self.city_list,
                 &mut self.trade_connections,
+                &self.config
             );
         }
         self.current_year += 1;
@@ -852,13 +860,29 @@ fn main() {
     let year_delimiter: u32 = year_count / 100;
 
     let mut world = {
-        let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster);
-        let (city_list, trade_connections) =
-            generate_cities(&region_map, &region_list, &mut rng, &markov_data_name);
+        let config = Config {
+            gen_radius: 3,
+            world_size: (40, 30),
+            coastal_city_density: 0.15,
+            inland_city_density: 0.02,
+            production_constant: 60.0,
+            population_constant: 0.0001,
+            notable_npc_threshold: 5,
+            trade_volume: 50.0,
+            trade_quantity: 20,
+        };
+        let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster, &config);
+        let (city_list, trade_connections) = generate_cities(
+            &region_map,
+            &region_list,
+            &mut rng,
+            &markov_data_name,
+            &config,
+        );
         let trade_connections_list: Vec<(usize, usize)> =
             trade_connections.iter().map(|(&k, _v)| k).collect();
         World {
-            config: CONFIG,
+            config,
             current_year: 0,
             region_map,
             region_list,
@@ -869,10 +893,11 @@ fn main() {
     };
 
     for y in 0..world.config.world_size.1 {
-        for x in 0..CONFIG.world_size.0 {
+        for x in 0..world.config.world_size.0 {
             print!(
                 "{}",
-                match world.region_list[world.region_map[world.config.world_size.0 * y + x]].terrain {
+                match world.region_list[world.region_map[world.config.world_size.0 * y + x]].terrain
+                {
                     Ocean => "\x1b[48;5;18m~",
                     Plain => "\x1b[48;5;100m%",
                     Forest => "\x1b[48;5;22m♧",
@@ -881,7 +906,8 @@ fn main() {
                     Jungle => "\x1b[48;5;34m♤",
                 }
             );
-            if world.city_list
+            if world
+                .city_list
                 .iter()
                 .any(|(&pos, _c)| pos == x + y * world.config.world_size.0)
             {
@@ -911,25 +937,27 @@ fn main() {
         // println!("{current_year}");
     }
     // println!("{city_list:?}");
-    fs::write("./saves/foo.json", JsonValue::from(world).dump()).expect("Unable to write file");
+    fs::write("./saves/foo.json", world.jsonize(world.config).dump())
+        .expect("Unable to write file");
 }
 
 fn build_region_map(
     rng: &mut ThreadRng,
     markov_data_monster: &MarkovData,
+    config: &Config,
 ) -> (Vec<usize>, Vec<Region>) {
     let mut regions = 0;
-    let mut region_map = vec![None; CONFIG.world_size.0 * CONFIG.world_size.1];
-    for y in 0..CONFIG.world_size.1 {
-        region_map[(y * CONFIG.world_size.0)] = Some(0);
-        region_map[(CONFIG.world_size.0 + y * CONFIG.world_size.0 - 1)] = Some(0);
+    let mut region_map = vec![None; config.world_size.0 * config.world_size.1];
+    for y in 0..config.world_size.1 {
+        region_map[(y * config.world_size.0)] = Some(0);
+        region_map[(config.world_size.0 + y * config.world_size.0 - 1)] = Some(0);
     }
-    for x in 0..CONFIG.world_size.0 {
+    for x in 0..config.world_size.0 {
         region_map[x] = Some(0);
-        region_map[((CONFIG.world_size.1 - 1) * CONFIG.world_size.0 + x)] = Some(0);
+        region_map[((config.world_size.1 - 1) * config.world_size.0 + x)] = Some(0);
     }
     // println!("{region_map:?}");
-    let mut indices: Vec<usize> = (0..(CONFIG.world_size.0 * CONFIG.world_size.1)).collect();
+    let mut indices: Vec<usize> = (0..(config.world_size.0 * config.world_size.1)).collect();
     loop {
         indices.shuffle(rng);
         for index in indices.clone() {
@@ -946,8 +974,8 @@ fn build_region_map(
                 );
                 continue;
             }
-            for n in 0..CONFIG.gen_radius {
-                let adj: Vec<usize> = get_adj(index, n)
+            for n in 0..config.gen_radius {
+                let adj: Vec<usize> = get_adj(index, n, config)
                     .iter()
                     .filter_map(|&m| region_map[m])
                     .collect();
@@ -982,11 +1010,26 @@ fn build_region_map(
     }
     let region_map_fixed: Vec<usize> = region_map.iter().map(|&m| m.unwrap_or(0)).collect();
     let mut region_list: Vec<Region> = (0..regions)
-        .map(|id| random_region(id + 1, &region_map_fixed, rng, regions, markov_data_monster))
+        .map(|id| {
+            random_region(
+                id + 1,
+                &region_map_fixed,
+                rng,
+                regions,
+                markov_data_monster,
+                config,
+            )
+        })
         .collect();
     region_list.insert(0, {
-        let mut base_region =
-            random_region(0, &region_map_fixed, rng, regions, markov_data_monster);
+        let mut base_region = random_region(
+            0,
+            &region_map_fixed,
+            rng,
+            regions,
+            markov_data_monster,
+            config,
+        );
         base_region.terrain = Ocean;
         base_region
     });
@@ -999,8 +1042,9 @@ fn random_region(
     rng: &mut ThreadRng,
     region_count: usize,
     markov_data_monster: &MarkovData,
+    config: &Config,
 ) -> Region {
-    let tiles: Vec<usize> = (0..(CONFIG.world_size.0 * CONFIG.world_size.1))
+    let tiles: Vec<usize> = (0..(config.world_size.0 * config.world_size.1))
         .filter(|&i| region_map[i] == id)
         .collect();
     let terrain = {
@@ -1050,7 +1094,7 @@ fn random_region(
         adjacent_regions: (0..region_count)
             .filter(|&neighbor_region| {
                 tiles.iter().any(|&tile| {
-                    get_adj(tile, 1)
+                    get_adj(tile, 1, config)
                         .iter()
                         .any(|&local_region| local_region == neighbor_region)
                 })
@@ -1148,20 +1192,21 @@ fn generate_cities<'a>(
     region_list: &[Region],
     rng: &mut ThreadRng,
     markov_data: &'a mkv::MarkovData,
+    config: &Config,
 ) -> (HashMap<usize, City<'a>>, HashMap<(usize, usize), i32>) {
     let mut possible_cities = Vec::new();
     for x in 0..region_map.len() {
         if region_list[region_map[x]].terrain == Ocean {
             continue;
         }
-        if get_adj(x, 1)
+        if get_adj(x, 1, config)
             .iter()
             .any(|&m| region_list[region_map[m]].terrain == Ocean)
         {
-            if rng.gen::<f32>() > CONFIG.coastal_city_density {
+            if rng.gen::<f32>() > config.coastal_city_density {
                 continue;
             }
-        } else if rng.gen::<f32>() > CONFIG.inland_city_density {
+        } else if rng.gen::<f32>() > config.inland_city_density {
             continue;
         }
         possible_cities.push(x);
@@ -1170,7 +1215,7 @@ fn generate_cities<'a>(
     possible_cities.shuffle(rng);
     for x in possible_cities {
         // Discard a city if there's already a city adjacent to it
-        if get_adj(x, 1)
+        if get_adj(x, 1, config)
             .iter()
             .any(|&x| actual_cities.iter().any(|&c| x == c))
         {
@@ -1215,7 +1260,7 @@ fn generate_cities<'a>(
                 trade_connections.extend(
                     actual_cities
                         .iter()
-                        .filter(|&&end| end > start && distance(end, start) < 5.0)
+                        .filter(|&&end| end > start && distance(end, start, config) < 5.0)
                         .map(|&end| ((start, end), 0)),
                 )
             }
@@ -1228,6 +1273,7 @@ fn handle_trade(
     route: (usize, usize),
     city_list: &mut HashMap<usize, City>,
     trade_connections: &mut HashMap<(usize, usize), i32>,
+    config: &Config,
 ) -> Option<()> {
     // immutable references to generate the resource lists
     let first_city = city_list.get(&route.0)?;
@@ -1237,9 +1283,9 @@ fn handle_trade(
         (0..ITEM_COUNT)
             .map(|item| {
                 (
-                    second_city.economy.get(item) * CONFIG.trade_volume
+                    second_city.economy.get(item) * config.trade_volume
                         / first_city.economy.get(item),
-                    first_city.economy.get(item) * CONFIG.trade_volume
+                    first_city.economy.get(item) * config.trade_volume
                         / second_city.economy.get(item),
                 )
             })
