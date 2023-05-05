@@ -3,7 +3,7 @@ use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use std::cmp::min;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::slice::Iter;
 use std::{env, fmt, fs};
 use strum::*;
@@ -857,9 +857,20 @@ fn main() {
         _ => 1000,
     };
     let year_delimiter: u32 = year_count / 100;
+    println!(
+        "{}",
+        String::from("╔")
+            + &"═".repeat(101)
+            + "╗\n║"
+            + &" ".repeat(101)
+            + "║\n╚"
+            + &"═".repeat(101)
+            + "╝\x1b[2F"
+    );
     for current_year in 0..=year_count {
         if current_year % year_delimiter == 0 {
-            println!("{current_year}");
+            print!("\x1b[32m\x1b[C█\x1b[D\x1b[0m");
+            std::io::stdout().flush().unwrap();
         }
         for city in city_list.values_mut() {
             city.tick(&mut rng, current_year);
