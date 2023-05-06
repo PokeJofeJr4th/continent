@@ -1,5 +1,15 @@
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::too_many_lines
+)]
+
 use json::object::Object;
-use json::*;
+use json::{array, object, JsonValue};
 use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use std::cmp::min;
 use std::collections::HashMap;
@@ -7,18 +17,13 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::slice::Iter;
 use std::{env, fmt, fs};
-use strum::*;
-
-use Skill::*;
-use Terrain::*;
+use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 mod mkv;
 use mkv::MarkovData;
 
 mod jsonize;
 use jsonize::SuperJsonizable;
-
-#[warn(clippy::pedantic)]
 
 macro_rules! mut_loop {
     ($original_list: expr => for $item: ident in $list: ident $func: expr) => {
@@ -98,25 +103,25 @@ pub enum Species {
 }
 
 impl Terrain {
-    fn monster_types(&self) -> Vec<Species> {
-        match &self {
-            Ocean => vec![Species::Leviathan],
-            Plain => vec![Species::Dragon, Species::Beast],
-            Forest => vec![Species::Beast],
-            Mountain => vec![Species::Dragon],
-            Desert => vec![Species::Worm, Species::Dragon],
-            Jungle => vec![Species::Beast],
+    fn monster_types(self) -> Vec<Species> {
+        match self {
+            Terrain::Ocean => vec![Species::Leviathan],
+            Terrain::Plain => vec![Species::Dragon, Species::Beast],
+            Terrain::Forest => vec![Species::Beast],
+            Terrain::Mountain => vec![Species::Dragon],
+            Terrain::Desert => vec![Species::Worm, Species::Dragon],
+            Terrain::Jungle => vec![Species::Beast],
         }
     }
 
-    fn color(&self) -> Vec<u8> {
-        match &self {
-            Ocean => vec![70, 90, 140],
-            Plain => vec![120, 140, 80],
-            Forest => vec![90, 150, 80],
-            Mountain => vec![96, 96, 96],
-            Desert => vec![160, 140, 90],
-            Jungle => vec![40, 130, 80],
+    fn color(self) -> Vec<u8> {
+        match self {
+            Terrain::Ocean => vec![70, 90, 140],
+            Terrain::Plain => vec![120, 140, 80],
+            Terrain::Forest => vec![90, 150, 80],
+            Terrain::Mountain => vec![96, 96, 96],
+            Terrain::Desert => vec![160, 140, 90],
+            Terrain::Jungle => vec![40, 130, 80],
         }
     }
 }
@@ -220,8 +225,9 @@ impl Inventory {
 
     fn set(&mut self, i: usize, v: f32) {
         assert!(i < self.0.len());
-        assert!(!v.is_nan());
-        self.0[i] = v;
+        if !v.is_nan() {
+            self.0[i] = v;
+        }
     }
 
     fn add(&mut self, i: usize, v: f32) {
@@ -346,10 +352,11 @@ impl City {
             self.production.add(item, production);
             // Deplete non-renewable resources and track food resources
             match item.into() {
-                Item::Metal(_) => self.resource_gathering.add(item, -0.001 * production),
-                Item::Gem(_) => self.resource_gathering.add(item, -0.001 * production),
+                Item::Metal(_) | Item::Gem(_) => {
+                    self.resource_gathering.add(item, -0.001 * production);
+                }
                 Item::Plant(_) | Item::Fish | Item::Meat(_) => {
-                    total_food_resources += self.resources.get(item)
+                    total_food_resources += self.resources.get(item);
                 }
                 _ => (),
             }
@@ -362,7 +369,7 @@ impl City {
                 let mut demand = 0.0;
                 match item.into() {
                     Item::Plant(_) | Item::Fish | Item::Meat(_) => {
-                        demand += (self.population as f32) * amount / total_food_resources
+                        demand += (self.population as f32) * amount / total_food_resources;
                     }
                     _ => {}
                 }
@@ -404,13 +411,7 @@ impl City {
 
         self.population += {
             let diff = net_food * config.population_constant;
-            diff.floor() as i32 + {
-                if rng.gen::<f32>() < (diff - diff.floor()) {
-                    1
-                } else {
-                    0
-                }
-            }
+            diff.floor() as i32 + i32::from(rng.gen::<f32>() < (diff - diff.floor()))
         };
 
         // Tick all living NPCs
@@ -421,7 +422,7 @@ impl City {
             self.tick_npc(npc, rng, current_year, config);
         });
         if living_npcs.len() < 3 {
-            npcs.push(self.generate_npc(rng, current_year, markov_data_npc))
+            npcs.push(self.generate_npc(rng, current_year, markov_data_npc));
         }
         self.npcs = npcs;
     }
@@ -466,7 +467,7 @@ impl City {
         } else if npc.pos == npc.origin
             && npc.age > 15
             && rng.gen::<f32>() * 10.0
-                < (*npc.skills.entry(Adventuring).or_insert(0) as f32 / npc.age as f32)
+                < (*npc.skills.entry(Skill::Adventuring).or_insert(0) as f32 / npc.age as f32)
             && !traveler_options.is_empty()
         {
             // Begin traveling
@@ -507,8 +508,7 @@ impl City {
                             time: current_year,
                             description: String::from("became a master in ") + choice.as_ref(),
                         }),
-                        None => {}
-                        Some(_) => {}
+                        _ => {}
                     }
                 }
             }
@@ -521,10 +521,7 @@ impl City {
                         if prod < 0.0 {
                             break;
                         }
-                        let resource = match $material_type.choose(rng) {
-                            Some(res) => res,
-                            None => break,
-                        };
+                        let Some(resource) = $material_type.choose(rng) else { break };
                         let quantity = min(
                             self.resources.get($material(resource).into()) as i64,
                             prod as i64,
@@ -536,10 +533,10 @@ impl City {
                     }
                 };
             }
-            produce_goods!(&Metalworking, Metal::iter(), &Item::Metal => &Item::MetalGood);
-            produce_goods!(&AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::TameAnimal);
-            produce_goods!(&AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::Meat);
-            produce_goods!(&Gemcutting, Gem::iter(), &Item::Gem => &Item::CutGem);
+            produce_goods!(&Skill::Metalworking, Metal::iter(), &Item::Metal => &Item::MetalGood);
+            produce_goods!(&Skill::AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::TameAnimal);
+            produce_goods!(&Skill::AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::Meat);
+            produce_goods!(&Skill::Gemcutting, Gem::iter(), &Item::Gem => &Item::CutGem);
         }
     }
 
@@ -577,7 +574,7 @@ pub struct Config {
     trade_quantity: i32,
 }
 
-impl Config {
+impl Default for Config {
     fn default() -> Config {
         Config {
             gen_radius: 3,
@@ -654,7 +651,7 @@ fn main() {
                 let mut buf = Vec::new();
                 let mut f = File::open($path).unwrap();
                 f.read_to_end(&mut buf).unwrap();
-                let $markov_data = MarkovData::from_bytes(buf).unwrap();)*
+                let $markov_data = MarkovData::from_bytes(&buf).unwrap();)*
             };
         }
 
@@ -716,12 +713,12 @@ fn main() {
                 "{}",
                 match world.region_list[world.region_map[world.config.world_size.0 * y + x]].terrain
                 {
-                    Ocean => "\x1b[48;5;18m~",
-                    Plain => "\x1b[48;5;100m%",
-                    Forest => "\x1b[48;5;22m♧",
-                    Mountain => "\x1b[48;5;8m◮",
-                    Desert => "\x1b[48;5;214m#",
-                    Jungle => "\x1b[48;5;34m♤",
+                    Terrain::Ocean => "\x1b[48;5;18m~",
+                    Terrain::Plain => "\x1b[48;5;100m%",
+                    Terrain::Forest => "\x1b[48;5;22m♧",
+                    Terrain::Mountain => "\x1b[48;5;8m◮",
+                    Terrain::Desert => "\x1b[48;5;214m#",
+                    Terrain::Jungle => "\x1b[48;5;34m♤",
                 }
             );
             if world
@@ -746,7 +743,7 @@ fn main() {
             + &"═".repeat(101)
             + "╝\x1b[2F"
     );
-    for current_year in 0..=year_count {
+    for current_year in 0..year_count {
         if current_year % year_delimiter == 0 {
             print!("\x1b[32m\x1b[C█\x1b[D\x1b[0m");
             std::io::stdout().flush().unwrap();
@@ -838,7 +835,7 @@ fn build_region_map(
             markov_data_monster,
             config,
         );
-        base_region.terrain = Ocean;
+        base_region.terrain = Terrain::Ocean;
         base_region
     });
     (region_map_fixed, region_list)
@@ -860,17 +857,17 @@ fn random_region(
         let ter = ter_iter.choose(rng);
         match ter {
             Some(&terrain) => terrain,
-            None => Ocean,
+            None => Terrain::Ocean,
         }
     };
     let resources = {
         let (metal, gem, plant, animal) = match terrain {
-            Plain => (0.2, 0.1, 0.4, 0.9),
-            Forest => (0.1, 0.2, 0.9, 0.4),
-            Mountain => (0.9, 0.4, 0.2, 0.1),
-            Desert => (0.4, 0.9, 0.1, 0.2),
-            Jungle => (0.1, 0.4, 0.9, 0.2),
-            Ocean => (0.0, 0.0, 0.0, 0.0),
+            Terrain::Plain => (0.2, 0.1, 0.4, 0.9),
+            Terrain::Forest => (0.1, 0.2, 0.9, 0.4),
+            Terrain::Mountain => (0.9, 0.4, 0.2, 0.1),
+            Terrain::Desert => (0.4, 0.9, 0.1, 0.2),
+            Terrain::Jungle => (0.1, 0.4, 0.9, 0.2),
+            Terrain::Ocean => (0.0, 0.0, 0.0, 0.0),
         };
 
         let mut resources = Inventory::default();
@@ -970,7 +967,7 @@ fn random_region(
                                     if species1 == species2 {
                                         String::from("with")
                                     } else {
-                                        format!("with the head of a {} and", species2)
+                                        format!("with the head of a {species2} and")
                                     }
                                 },
                                 part,
@@ -1004,12 +1001,12 @@ fn generate_cities(
 ) -> (HashMap<usize, City>, HashMap<(usize, usize), i32>) {
     let mut possible_cities = Vec::new();
     for x in 0..region_map.len() {
-        if region_list[region_map[x]].terrain == Ocean {
+        if region_list[region_map[x]].terrain == Terrain::Ocean {
             continue;
         }
         if get_adj(x, 1, config)
             .iter()
-            .any(|&m| region_list[region_map[m]].terrain == Ocean)
+            .any(|&m| region_list[region_map[m]].terrain == Terrain::Ocean)
         {
             if rng.gen::<f32>() > config.coastal_city_density {
                 continue;
@@ -1068,7 +1065,7 @@ fn generate_cities(
                         .iter()
                         .filter(|&&end| end > start && distance(end, start, config) < 5.0)
                         .map(|&end| ((start, end), 0)),
-                )
+                );
             }
             trade_connections
         },

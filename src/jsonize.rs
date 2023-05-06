@@ -56,7 +56,7 @@ impl<T: Jsonizable> Jsonizable for Vec<T> {
             JsonValue::Array(array) => {
                 let mut result: Self = Vec::new();
                 for src in array {
-                    result.push(T::dejsonize(src, config)?)
+                    result.push(T::dejsonize(src, config)?);
                 }
                 Some(result)
             }
@@ -129,7 +129,7 @@ impl SuperJsonizable for Inventory {
                     ALL_ITEMS
                         .iter()
                         .map(|item| {
-                            object.get(&format!("{}", item)).map_or(0.0, |jsonvalue| {
+                            object.get(&format!("{item}")).map_or(0.0, |jsonvalue| {
                                 json_number(jsonvalue, 2).unwrap_or_default() as f32 / 100.0
                             })
                         })
@@ -461,12 +461,12 @@ impl SuperJsonizable for World {
             CityList: self.city_list.values().cloned().collect::<Vec<City>>().jsonize(&self.config),
             trade_connections: self.trade_connections.iter().map(|((first, second), &strength)| (format!("[{}, {}, {}, {}]", first % self.config.world_size.0, first / self.config.world_size.0, second % self.config.world_size.0, second / self.config.world_size.0), strength)).collect::<HashMap<String, i32>>(),
             Biomes: {
-                Desert: Desert.jsonize(&self.config),
-                Forest: Forest.jsonize(&self.config),
-                Jungle: Jungle.jsonize(&self.config),
-                Mountain: Mountain.jsonize(&self.config),
-                Ocean: Ocean.jsonize(&self.config),
-                Plain: Plain.jsonize(&self.config)},
+                Desert: Terrain::Desert.jsonize(&self.config),
+                Forest: Terrain::Forest.jsonize(&self.config),
+                Jungle: Terrain::Jungle.jsonize(&self.config),
+                Mountain: Terrain::Mountain.jsonize(&self.config),
+                Ocean: Terrain::Ocean.jsonize(&self.config),
+                Plain: Terrain::Plain.jsonize(&self.config)},
             Items: {
                 Animals: item_type!(Animal),
                 Plants: item_type!(Plant),
@@ -495,7 +495,7 @@ impl SuperJsonizable for World {
                         Some(JsonValue::Array(arr)) => {
                             let mut region_list = Vec::new();
                             for region in arr {
-                                region_list.push(Region::dejsonize(region, &config)?)
+                                region_list.push(Region::dejsonize(region, &config)?);
                             }
                             Some(region_list)
                         }
@@ -534,7 +534,7 @@ impl SuperJsonizable for World {
                 let mut region_map = vec![0; config.world_size.0 * config.world_size.1];
                 for region in &region_list {
                     for &tile in &region.tiles {
-                        region_map[tile] = region.id
+                        region_map[tile] = region.id;
                     }
                 }
                 Some(Self {

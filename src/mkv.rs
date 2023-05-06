@@ -51,12 +51,11 @@ impl MarkovData {
             };
             result.push(match self.map.get(&ending) {
                 Some(result) => match result.0.get(result.2.sample(rng)) {
-                    Some(&';') => break,
+                    Some(&';') | None => break,
                     Some(&c) => c,
-                    None => break,
                 },
                 None => break,
-            })
+            });
         }
         // println!("{result:?}");
         if 5 < result.len() && result.len() < 15 {
@@ -90,7 +89,7 @@ impl MarkovData {
         Some(Self::from_strings(
             &string_data
                 .iter()
-                .map(|s| s.as_ref())
+                .map(std::convert::AsRef::as_ref)
                 .collect::<Vec<&str>>(),
         ))
     }
@@ -142,7 +141,7 @@ impl MarkovData {
             }
             let mut intermediate_counts: HashMap<(char, char), (Vec<char>, Vec<u32>)> =
                 HashMap::new();
-            for (&(k, character), &amount) in counts.iter() {
+            for (&(k, character), &amount) in &counts {
                 intermediate_counts.insert(k, {
                     let mut vectors = match intermediate_counts.get(&k) {
                         Some(vecs) => vecs.clone(),
@@ -192,7 +191,7 @@ impl MarkovData {
         bytes
     }
 
-    pub fn from_bytes(bytes: Vec<u8>) -> Option<Self> {
+    pub fn from_bytes(bytes: &[u8]) -> Option<Self> {
         let mut bytes_iter = bytes.iter();
         let mut starts = Vec::new();
         loop {
@@ -212,8 +211,7 @@ impl MarkovData {
         // over each pair of characters that can end the word
         loop {
             let char_pair = match bytes_iter.next() {
-                None => break,
-                Some(0) => break,
+                None | Some(0) => break,
                 Some(&first_byte) => (
                     byte_to_char(first_byte).unwrap().0,
                     byte_to_char(*bytes_iter.next().unwrap()).unwrap().0,
@@ -223,8 +221,7 @@ impl MarkovData {
             // over each possible character that could come next
             loop {
                 match bytes_iter.next() {
-                    None => break,
-                    Some(0) => break,
+                    None | Some(0) => break,
                     Some(&val) => {
                         weights.push(byte_to_char(val).map(|(c, u)| (c, u as u32)).unwrap());
                     }
@@ -260,12 +257,12 @@ fn char_to_byte((char, weight): (char, u8)) -> Option<u8> {
 }
 
 fn byte_to_char(byte: u8) -> Option<(char, u8)> {
-    use std::cmp::Ordering::*;
+    use std::cmp::Ordering;
 
-    match 27.cmp(&(byte & 0b00011111)) {
-        Less => None,
-        Equal => Some((';', (byte >> 5) + 1)),
-        Greater => match byte & 0b00011111 {
+    match 27.cmp(&(byte & 0b0001_1111)) {
+        Ordering::Less => None,
+        Ordering::Equal => Some((';', (byte >> 5) + 1)),
+        Ordering::Greater => match byte & 0b0001_1111 {
             0 => None,
             letter => Some(((letter + 96) as char, (byte >> 5) + 1)),
         },
@@ -331,7 +328,7 @@ mod tests {
 
         let initialized_markov = MarkovData::from_strings(&string_pool);
         let bytes = initialized_markov.to_bytes();
-        let loaded_markov = MarkovData::from_bytes(bytes).unwrap();
+        let loaded_markov = MarkovData::from_bytes(&bytes).unwrap();
         assert_eq!(String::from("Strings "), loaded_markov.sample(&mut rng))
     }
 
