@@ -3,8 +3,8 @@ use crate::*;
 fn json_array_to_usize(arr: &JsonValue, config: &Config) -> Option<usize> {
     match arr {
         JsonValue::Array(coords) => {
-            let xcoord = json_number(coords.get(0)?, 0)? as usize;
-            let ycoord = json_number(coords.get(1)?, 0)? as usize;
+            let xcoord = json_int(coords.get(0)?)? as usize;
+            let ycoord = json_int(coords.get(1)?)? as usize;
             Some(xcoord + ycoord * config.world_size.0)
         }
         _ => None,
@@ -19,10 +19,17 @@ fn json_string(jsonvalue: &JsonValue) -> Option<String> {
     }
 }
 
-fn json_number(jsonvalue: &JsonValue, depth: u16) -> Option<i64> {
+fn json_int(jsonvalue: &JsonValue) -> Option<i32> {
     match jsonvalue {
-        JsonValue::Number(num) => Some(num.as_fixed_point_i64(depth).unwrap_or_default()),
+        JsonValue::Number(num) => Some(num.as_fixed_point_i64(0).unwrap_or_default() as i32),
         _ => None,
+    }
+}
+
+fn json_float(jsonvalue: &JsonValue, depth: u16) -> Option<f32> {
+    match jsonvalue {
+        JsonValue::Number(num) => Some(num.as_fixed_point_i64(depth).unwrap_or_default() as f32 / 10.0f32.powf(depth as f32)),
+        _ => None
     }
 }
 
@@ -130,7 +137,7 @@ impl SuperJsonizable for Inventory {
                         .iter()
                         .map(|item| {
                             object.get(&format!("{item}")).map_or(0.0, |jsonvalue| {
-                                json_number(jsonvalue, 2).unwrap_or_default() as f32 / 100.0
+                                json_float(jsonvalue, 2).unwrap_or_default()
                             })
                         })
                         .collect()
@@ -176,7 +183,7 @@ impl Jsonizable for Region {
                     Some(JsonValue::Array(array)) => {
                         let mut regions = Vec::new();
                         for item in array {
-                            regions.push(json_number(item, 0)? as usize);
+                            regions.push(json_int(item)? as usize);
                         }
                         Some(regions)
                     }
@@ -266,8 +273,8 @@ impl Jsonizable for Npc {
                 title: json_string(object.get("title")?)?,
                 pos: json_array_to_usize(object.get("pos")?, config)?,
                 origin: json_array_to_usize(object.get("origin")?, config)?,
-                birth: json_number(object.get("birth")?, 0)? as u32,
-                age: json_number(object.get("age")?, 0)? as u32,
+                birth: json_int(object.get("birth")?)? as u32,
+                age: json_int(object.get("age")?)? as u32,
                 alive: match object.get("alive") {
                     Some(JsonValue::Boolean(bool)) => *bool,
                     _ => return None,
@@ -278,9 +285,9 @@ impl Jsonizable for Npc {
                         for skill in Skill::iter() {
                             skills.insert(
                                 skill,
-                                json_number(
-                                    object.get(skill.as_ref()).unwrap_or(&JsonValue::Null),
-                                    0,
+                                json_int(
+                                    object.get(skill.as_ref()).unwrap_or(&JsonValue::Null)
+                                    
                                 )
                                 .unwrap_or_default() as u8,
                             );
@@ -308,7 +315,7 @@ impl SuperJsonizable for HistoricalEvent {
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
         match src {
             JsonValue::Object(object) => Some(Self {
-                time: json_number(object.get("Time")?, 0)? as u32,
+                time: json_int(object.get("Time")?)? as u32,
                 description: json_string(object.get("Desc")?)?,
             }),
             _ => None,
@@ -344,7 +351,7 @@ impl Jsonizable for City {
                 name: json_string(object.get("name")?)?,
                 pos: json_array_to_usize(object.get("pos")?, config)?,
                 npcs: Vec::<Npc>::dejsonize(object.get("NPCs")?, config)?,
-                population: json_number(object.get("population")?, 0)? as i32,
+                population: json_int(object.get("population")?)?,
                 resources: Inventory::s_dejsonize(object.get("resources")?)?,
                 economy: Inventory::s_dejsonize(object.get("economy")?)?,
                 resource_gathering: Inventory::s_dejsonize(object.get("resource_gathering")?)?,
@@ -377,26 +384,22 @@ impl SuperJsonizable for Config {
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
         match src {
             JsonValue::Object(object) => Some(Self {
-                gen_radius: json_number(object.get("GEN_RADIUS")?, 0)? as usize,
+                gen_radius: json_int(object.get("GEN_RADIUS")?)? as usize,
                 world_size: match object.get("WORLD_SIZE") {
                     Some(JsonValue::Array(array)) => {
-                        let xsize = json_number(array.get(0)?, 0)? as usize;
-                        let ysize = json_number(array.get(1)?, 0)? as usize;
+                        let xsize = json_int(array.get(0)?)? as usize;
+                        let ysize = json_int(array.get(1)?)? as usize;
                         (xsize, ysize)
                     }
                     _ => return None,
                 },
-                coastal_city_density: json_number(object.get("COASTAL_CITY_DENSITY")?, 3)? as f32
-                    / 1000.0,
-                inland_city_density: json_number(object.get("INLAND_CITY_DENSITY")?, 3)? as f32
-                    / 1000.0,
-                production_constant: json_number(object.get("PRODUCTION_CONSTANT")?, 3)? as f32
-                    / 1000.0,
-                population_constant: json_number(object.get("POPULATION_CONSTANT")?, 3)? as f32
-                    / 1000.0,
-                notable_npc_threshold: json_number(object.get("NOTABLE_NPC_THRESHOLD")?, 0)? as u8,
-                trade_volume: json_number(object.get("TRADE_VOLUME")?, 3)? as f32 / 1000.0,
-                trade_quantity: json_number(object.get("TRADE_QUANTITY")?, 0)? as i32,
+                coastal_city_density: json_float(object.get("COASTAL_CITY_DENSITY")?, 3)?,
+                inland_city_density: json_float(object.get("INLAND_CITY_DENSITY")?, 3)?,
+                production_constant: json_float(object.get("PRODUCTION_CONSTANT")?, 3)?,
+                population_constant: json_float(object.get("POPULATION_CONSTANT")?, 3)?,
+                notable_npc_threshold: json_int(object.get("NOTABLE_NPC_THRESHOLD")?)? as u8,
+                trade_volume: json_float(object.get("TRADE_VOLUME")?, 3)?,
+                trade_quantity: json_int(object.get("TRADE_QUANTITY")?)?,
             }),
             _ => None,
         }
@@ -527,7 +530,7 @@ impl SuperJsonizable for World {
                                 ),
                                 _ => return None,
                             };
-                            trade_connections.insert(key, json_number(v, 0)? as i32);
+                            trade_connections.insert(key, json_int(v)?);
                         }
                         trade_connections
                     }
@@ -543,7 +546,7 @@ impl SuperJsonizable for World {
                 println!("done region map");
                 Some(Self {
                     config,
-                    current_year: json_number(object.get("current_year")?, 0)? as u32,
+                    current_year: json_int(object.get("current_year")?)? as u32,
                     region_list,
                     city_list: Vec::<City>::dejsonize(object.get("CityList")?, &config)?
                         .iter()
