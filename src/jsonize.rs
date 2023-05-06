@@ -86,7 +86,7 @@ impl<T: Jsonizable> Jsonizable for Vec<T> {
 
 impl<T: Jsonizable> Jsonizable for HashMap<String, T> {
     fn jsonize(&self, config: &Config) -> JsonValue {
-        let mut object = Object::new();
+        let mut object = json::object::Object::new();
         self.iter()
             .for_each(|(key, value)| object.insert(key, value.jsonize(config)));
         JsonValue::Object(object)

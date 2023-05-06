@@ -8,15 +8,16 @@
     clippy::too_many_lines
 )]
 
-use json::object::Object;
-use json::{array, object, JsonValue};
-use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use std::cmp::min;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::slice::Iter;
-use std::{env, fmt, fs};
+use std::{fmt, fs};
+
+use clap::Parser;
+use json::{array, object, JsonValue};
+use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 mod mkv;
@@ -620,6 +621,21 @@ impl World {
     }
 }
 
+#[derive(Parser, Debug)]
+struct Args {
+    // duration to run (default 1000)
+    #[arg(short, long, default_value_t = 1000)]
+    duration: u32,
+
+    // load from file (default don't)
+    #[arg(short, long, default_value_t = String::from(""))]
+    path: String,
+
+    // save to file (default foo.json)
+    #[arg(short, long, default_value_t = String::from("./saves/foo.json"))]
+    save: String,
+}
+
 fn main() {
     unsafe {
         // This is safe because nothing's accessing it yet
@@ -665,23 +681,17 @@ fn main() {
         // markov_data_plant from "markov/plant.mkv"
     }
 
-    // If a year count is provided, use it. Otherwise, just simulate 1000 years
-    let year_count: u32 = match env::args().nth(1).map(|arg| arg.parse::<u32>()) {
-        Some(Ok(year)) => year,
-        _ => 1000,
-    };
-    let year_delimiter: u32 = year_count / 100;
+    let args: Args = Args::parse();
+
+    let year_delimiter: u32 = args.duration / 100;
 
     let mut world = {
-        match env::args().nth(2) {
-            None => None,
-            Some(path) => match fs::read_to_string(path) {
-                Ok(contents) => match json::parse(&contents) {
-                    Ok(jsonvalue) => World::s_dejsonize(&jsonvalue),
-                    _ => None,
-                },
+        match fs::read_to_string(args.path) {
+            Ok(contents) => match json::parse(&contents) {
+                Ok(jsonvalue) => World::s_dejsonize(&jsonvalue),
                 _ => None,
             },
+            _ => None,
         }
     }
     .unwrap_or({
@@ -736,21 +746,21 @@ fn main() {
     println!(
         "{}",
         String::from("╔")
-            + &"═".repeat(101)
+            + &"═".repeat(100)
             + "╗\n║"
-            + &" ".repeat(101)
+            + &" ".repeat(100)
             + "║\n╚"
-            + &"═".repeat(101)
+            + &"═".repeat(100)
             + "╝\x1b[2F"
     );
-    for current_year in 0..year_count {
+    for current_year in 0..args.duration {
         if current_year % year_delimiter == 0 {
             print!("\x1b[32m\x1b[C█\x1b[D\x1b[0m");
             std::io::stdout().flush().unwrap();
         }
         world.tick(&mut rng, &markov_data_name);
     }
-    fs::write("./saves/foo.json", world.s_jsonize().dump()).expect("Unable to write file");
+    fs::write(args.save, world.s_jsonize().dump()).expect("Unable to write file");
 }
 
 fn build_region_map(
