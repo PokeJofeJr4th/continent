@@ -69,7 +69,6 @@ fn distance(a: usize, b: usize, config: &Config) -> f32 {
 }
 
 fn inverse_add(a: f32, b: f32) -> f32 {
-    // println!("{a} !+ {b} = {}", (a * b) / (a + b));
     (a * b) / (a + b)
 }
 
@@ -80,18 +79,8 @@ fn usize_to_vec(index: usize, config: &Config) -> Vec<usize> {
 fn json_array_to_usize(arr: &JsonValue, config: &Config) -> Option<usize> {
     match arr {
         JsonValue::Array(coords) => {
-            let xcoord = match coords.get(0) {
-                Some(JsonValue::Number(num)) => {
-                    Some(num.as_fixed_point_u64(0).unwrap_or(0) as usize)
-                }
-                _ => None,
-            }?;
-            let ycoord = match coords.get(1) {
-                Some(JsonValue::Number(num)) => {
-                    Some(num.as_fixed_point_u64(0).unwrap_or(0) as usize)
-                }
-                _ => None,
-            }?;
+            let xcoord = json_number(coords.get(0)?, 0)? as usize;
+            let ycoord = json_number(coords.get(1)?, 0)? as usize;
             Some(xcoord + ycoord * config.world_size.0)
         }
         _ => None,
@@ -129,7 +118,6 @@ impl<T: SuperJsonizable> Jsonizable for T {
     }
 
     fn dejsonize(src: &JsonValue, _config: &Config) -> Option<Self> {
-        println!("{src}");
         Self::s_dejsonize(src)
     }
 }
@@ -217,15 +205,9 @@ impl SuperJsonizable for Inventory {
                     ALL_ITEMS
                         .iter()
                         .map(|item| {
-                            object.get(&format!("{}", item)).map_or(
-                                0.0,
-                                |jsonvalue| match jsonvalue {
-                                    JsonValue::Number(num) => {
-                                        num.as_fixed_point_u64(2).unwrap_or(0) as f32 / 100.0
-                                    }
-                                    _ => 0.0,
-                                },
-                            )
+                            object.get(&format!("{}", item)).map_or(0.0, |jsonvalue| {
+                                json_number(jsonvalue, 2).unwrap_or_default() as f32 / 100.0
+                            })
                         })
                         .collect()
                 };
@@ -253,10 +235,7 @@ impl Jsonizable for Region {
     fn dejsonize(src: &JsonValue, config: &Config) -> Option<Self> {
         match src {
             JsonValue::Object(object) => Some(Self {
-                id: match object.get("id") {
-                    Some(JsonValue::Number(num)) => num.as_fixed_point_u64(0).unwrap_or(0) as usize,
-                    _ => return None,
-                },
+                id: json_number(object.get("id")?, 0)? as usize,
                 tiles: match object.get("tiles") {
                     Some(JsonValue::Array(array)) => {
                         let mut tiles = Vec::new();
@@ -273,18 +252,13 @@ impl Jsonizable for Region {
                     Some(JsonValue::Array(array)) => {
                         let mut regions = Vec::new();
                         for item in array {
-                            regions.push(match item {
-                                JsonValue::Number(num) => {
-                                    Some(num.as_fixed_point_u64(0).unwrap_or(0) as usize)
-                                }
-                                _ => None,
-                            }?)
+                            regions.push(json_number(item, 0)? as usize);
                         }
                         Some(regions)
                     }
                     _ => None,
                 }?,
-                monster: Monster::dejsonize(object.get("Monster")?, config),
+                monster: Monster::dejsonize(object.get("monster")?, config),
             }),
             _ => None,
         }
@@ -307,9 +281,9 @@ impl Jsonizable for Monster {
         match src {
             JsonValue::Object(object) => Some(Self {
                 alive: match object.get("alive") {
-                    Some(JsonValue::Boolean(alive)) => Some(*alive),
-                    _ => None,
-                }?,
+                    Some(JsonValue::Boolean(alive)) => *alive,
+                    _ => return None,
+                },
                 location: json_array_to_usize(object.get("location")?, config)?,
                 inventory: Inventory::s_dejsonize(object.get("inventory")?)?,
                 species: json_string(object.get("species")?)?,
@@ -369,7 +343,7 @@ impl Jsonizable for Npc {
                 pos: json_array_to_usize(object.get("pos")?, config)?,
                 origin: json_array_to_usize(object.get("origin")?, config)?,
                 birth: json_number(object.get("birth")?, 0)? as u32,
-                age: json_number(object.get("birth")?, 0)? as u32,
+                age: json_number(object.get("age")?, 0)? as u32,
                 alive: match object.get("alive") {
                     Some(JsonValue::Boolean(bool)) => *bool,
                     _ => return None,
@@ -378,8 +352,14 @@ impl Jsonizable for Npc {
                     Some(JsonValue::Object(object)) => {
                         let mut skills = HashMap::new();
                         for skill in Skill::iter() {
-                            skills
-                                .insert(skill, json_number(object.get(skill.as_ref())?, 0)? as u8);
+                            skills.insert(
+                                skill,
+                                json_number(
+                                    object.get(skill.as_ref()).unwrap_or(&JsonValue::Null),
+                                    0,
+                                )
+                                .unwrap_or_default() as u8,
+                            );
                         }
                         skills
                     }
@@ -404,7 +384,7 @@ impl SuperJsonizable for HistoricalEvent {
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
         match src {
             JsonValue::Object(object) => Some(Self {
-                time: json_number(object.get("time")?, 0)? as u32,
+                time: json_number(object.get("Time")?, 0)? as u32,
                 description: json_string(object.get("Desc")?)?,
             }),
             _ => None,
@@ -583,12 +563,11 @@ impl SuperJsonizable for World {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        println!("{src}");
         match src {
             JsonValue::Object(object) => {
                 let config = Config::s_dejsonize(object.get("Config")?)?;
                 let region_list = {
-                    match object.get("regions") {
+                    match object.get("RegionList") {
                         Some(JsonValue::Array(arr)) => {
                             let mut region_list = Vec::new();
                             for region in arr {
@@ -636,12 +615,9 @@ impl SuperJsonizable for World {
                 }
                 Some(Self {
                     config,
-                    current_year: object
-                        .get("current_year")?
-                        .as_fixed_point_u64(0)
-                        .unwrap_or_default() as u32,
+                    current_year: json_number(object.get("current_year")?, 0)? as u32,
                     region_list,
-                    city_list: Vec::<City>::dejsonize(object.get("city_list")?, &config)?
+                    city_list: Vec::<City>::dejsonize(object.get("CityList")?, &config)?
                         .iter()
                         .map(|c| (c.pos, c.clone()))
                         .collect(),
@@ -979,10 +955,6 @@ impl City {
             *amount = (*amount - demand[item]).clamp(0.0, f32::MAX);
         }
         let net_food = total_food_resources - self.population as f32;
-        // println!(
-        //     "{} food for {} people => {} net food",
-        //     total_food_resources, self.population, net_food
-        // );
 
         self.population += {
             let diff = net_food * config.population_constant;
@@ -1226,7 +1198,6 @@ fn main() {
             ALL_ITEMS.push(Item::Meat(animal));
         }
         assert_eq!(ALL_ITEMS.len(), ITEM_COUNT);
-        // println!("{ITEM_COUNT}");
     }
 
     let mut rng = thread_rng();
@@ -1260,22 +1231,13 @@ fn main() {
 
     let mut world = {
         match env::args().nth(2) {
-            None => {
-                println!("No Path Given");
-                None
-            }
+            None => None,
             Some(path) => match fs::read_to_string(path) {
-                Err(err) => {
-                    println!("{err}");
-                    None
-                }
                 Ok(contents) => match json::parse(&contents) {
-                    Err(err) => {
-                        println!("{err}");
-                        None
-                    }
                     Ok(jsonvalue) => World::s_dejsonize(&jsonvalue),
+                    _ => None,
                 },
+                _ => None,
             },
         }
     }
@@ -1344,9 +1306,7 @@ fn main() {
             std::io::stdout().flush().unwrap();
         }
         world.tick(&mut rng, &markov_data_name);
-        // println!("{current_year}");
     }
-    // println!("{city_list:?}");
     fs::write("./saves/foo.json", world.jsonize(&world.config).dump())
         .expect("Unable to write file");
 }
@@ -1366,7 +1326,6 @@ fn build_region_map(
         region_map[x] = Some(0);
         region_map[((config.world_size.1 - 1) * config.world_size.0 + x)] = Some(0);
     }
-    // println!("{region_map:?}");
     let mut indices: Vec<usize> = (0..(config.world_size.0 * config.world_size.1)).collect();
     loop {
         indices.shuffle(rng);
@@ -1375,7 +1334,6 @@ fn build_region_map(
                 Some(res) => res.is_some(),
                 None => false,
             } {
-                // println!("Index already filled");
                 indices.remove(
                     indices
                         .iter()
@@ -1389,20 +1347,16 @@ fn build_region_map(
                     .iter()
                     .filter_map(|&m| region_map[m])
                     .collect();
-                // println!("{adj:?}");
                 if adj.is_empty() {
-                    // println!("No adjacent non -1");
                     continue;
                 }
                 region_map[index] = adj.choose(rng).copied();
-                // println!("Set Region to {}", region_map[index as usize]);
                 break;
             }
             if match region_map.get(index) {
                 Some(res) => res.is_none(),
                 None => false,
             } {
-                // println!("Starting a new region");
                 regions += 1;
                 region_map[index] = Some(regions);
                 indices.remove(
@@ -1414,7 +1368,6 @@ fn build_region_map(
             }
         }
         if !indices.iter().any(|&item| region_map[item].is_none()) {
-            // println!("Found no -1");
             break;
         }
     }
@@ -1631,7 +1584,6 @@ fn generate_cities(
         {
             continue;
         }
-        // println!("{:?} != {:?}", actual_cities, get_adj!(&WORLD_SIZE, x, 1));
         actual_cities.push(x);
     }
     return (
