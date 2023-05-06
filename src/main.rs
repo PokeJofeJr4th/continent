@@ -689,9 +689,9 @@ fn main() {
         match fs::read_to_string(args.path) {
             Ok(contents) => match json::parse(&contents) {
                 Ok(jsonvalue) => World::s_dejsonize(&jsonvalue),
-                _ => None,
+                err => {println!("{err:?}"); None},
             },
-            _ => None,
+            err => {println!("{err:?}"); None},
         }
     }
     .unwrap_or({

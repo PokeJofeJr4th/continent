@@ -145,7 +145,6 @@ impl SuperJsonizable for Inventory {
 impl Jsonizable for Region {
     fn jsonize(&self, config: &Config) -> JsonValue {
         object! {
-            id: self.id,
             tiles: self.tiles.iter().map(|&tile| usize_to_vec(tile, config)).collect::<Vec<Vec<usize>>>(),
             resources: self.resources.s_jsonize(),
             terrain: self.terrain.as_ref(),
@@ -157,9 +156,10 @@ impl Jsonizable for Region {
     }
 
     fn dejsonize(src: &JsonValue, config: &Config) -> Option<Self> {
+        println!("dj region");
         match src {
             JsonValue::Object(object) => Some(Self {
-                id: json_number(object.get("id")?, 0)? as usize,
+                id: 0,
                 tiles: match object.get("tiles") {
                     Some(JsonValue::Array(array)) => {
                         let mut tiles = Vec::new();
@@ -494,8 +494,10 @@ impl SuperJsonizable for World {
                     match object.get("RegionList") {
                         Some(JsonValue::Array(arr)) => {
                             let mut region_list = Vec::new();
-                            for region in arr {
-                                region_list.push(Region::dejsonize(region, &config)?);
+                            for (id, region) in arr.iter().enumerate() {
+                                let mut region = Region::dejsonize(region, &config)?;
+                                region.id = id;
+                                region_list.push(region);
                             }
                             Some(region_list)
                         }
@@ -531,12 +533,14 @@ impl SuperJsonizable for World {
                     }
                     _ => return None,
                 };
+                println!("done trade");
                 let mut region_map = vec![0; config.world_size.0 * config.world_size.1];
                 for region in &region_list {
                     for &tile in &region.tiles {
                         region_map[tile] = region.id;
                     }
                 }
+                println!("done region map");
                 Some(Self {
                     config,
                     current_year: json_number(object.get("current_year")?, 0)? as u32,
