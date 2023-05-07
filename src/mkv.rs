@@ -1,14 +1,21 @@
+#![warn(clippy::pedantic)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::too_many_lines
+)]
 use std::{collections::HashMap, fs};
 
 use rand::{
     distributions::WeightedIndex, prelude::Distribution, rngs::ThreadRng, seq::SliceRandom,
 };
 
-#[warn(clippy::pedantic)]
-
 #[derive(Debug, Clone)]
 #[allow(clippy::type_complexity)]
-pub(crate) struct MarkovData {
+pub struct MarkovData {
     starts: Vec<(char, char)>,
     map: HashMap<(char, char), (Vec<char>, Vec<u32>, WeightedIndex<u32>)>,
 }
@@ -64,12 +71,9 @@ impl MarkovData {
                     .split(' ')
                     .map(|word| {
                         let mut chars = word.chars();
-                        (match chars.next() {
-                            None => String::new(),
-                            Some(first) => {
-                                first.to_uppercase().collect::<String>() + chars.as_str()
-                            }
-                        } + " ")
+                        chars.next().map_or(String::new(), |first| {
+                            first.to_uppercase().collect::<String>() + chars.as_str()
+                        }) + " "
                     })
                     .collect::<String>(),
             )
@@ -132,10 +136,7 @@ impl MarkovData {
                         },
                     );
                     counts.insert(char_triple, {
-                        match counts.get(&char_triple) {
-                            Some(c) => c + 1,
-                            None => 1,
-                        }
+                        counts.get(&char_triple).map_or(1, |c| c + 1)
                     });
                 }
             }
@@ -143,22 +144,21 @@ impl MarkovData {
                 HashMap::new();
             for (&(k, character), &amount) in &counts {
                 intermediate_counts.insert(k, {
-                    let mut vectors = match intermediate_counts.get(&k) {
-                        Some(vecs) => vecs.clone(),
-                        None => (Vec::new(), Vec::new()),
-                    };
+                    let mut vectors = intermediate_counts
+                        .get(&k)
+                        .map_or((Vec::new(), Vec::new()), Clone::clone);
                     vectors.0.push(character);
                     vectors.1.push(amount);
                     vectors
                 });
             }
-            MarkovData {
+            Self {
                 starts,
                 map: intermediate_counts
                     .iter()
-                    .filter_map(|(&k, (chars, weights))| match WeightedIndex::new(weights) {
-                        Ok(res) => Some((k, (chars.clone(), weights.clone(), res))),
-                        Err(_) => None,
+                    .filter_map(|(&k, (chars, weights))| {
+                        WeightedIndex::new(weights)
+                            .map_or(None, |res| Some((k, (chars.clone(), weights.clone(), res))))
                     })
                     .collect(),
             }
@@ -223,7 +223,7 @@ impl MarkovData {
                 match bytes_iter.next() {
                     None | Some(0) => break,
                     Some(&val) => {
-                        weights.push(byte_to_char(val).map(|(c, u)| (c, u as u32)).unwrap());
+                        weights.push(byte_to_char(val).map(|(c, u)| (c, u32::from(u))).unwrap());
                     }
                 }
             }
@@ -233,9 +233,9 @@ impl MarkovData {
             starts,
             map: intermediate_counts
                 .iter()
-                .filter_map(|(&k, (chars, weights))| match WeightedIndex::new(weights) {
-                    Ok(res) => Some((k, (chars.clone(), weights.clone(), res))),
-                    Err(_) => None,
+                .filter_map(|(&k, (chars, weights))| {
+                    WeightedIndex::new(weights)
+                        .map_or(None, |res| Some((k, (chars.clone(), weights.clone(), res))))
                 })
                 .collect(),
         })

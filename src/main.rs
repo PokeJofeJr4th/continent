@@ -1,4 +1,4 @@
-#![warn(clippy::pedantic)]
+#![warn(clippy::pedantic, clippy::nursery)]
 #![allow(
     clippy::cast_possible_truncation,
     clippy::cast_possible_wrap,
@@ -85,7 +85,7 @@ fn usize_to_vec(index: usize, config: &Config) -> Vec<usize> {
     vec![index % config.world_size.0, index / config.world_size.0]
 }
 
-#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, EnumIter)]
+#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, Eq, EnumIter)]
 pub enum Terrain {
     Ocean,
     Plain,
@@ -95,7 +95,7 @@ pub enum Terrain {
     Jungle,
 }
 
-#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, EnumIter)]
+#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, Eq, EnumIter)]
 pub enum Species {
     Leviathan,
     Dragon,
@@ -106,23 +106,23 @@ pub enum Species {
 impl Terrain {
     fn monster_types(self) -> Vec<Species> {
         match self {
-            Terrain::Ocean => vec![Species::Leviathan],
-            Terrain::Plain => vec![Species::Dragon, Species::Beast],
-            Terrain::Forest => vec![Species::Beast],
-            Terrain::Mountain => vec![Species::Dragon],
-            Terrain::Desert => vec![Species::Worm, Species::Dragon],
-            Terrain::Jungle => vec![Species::Beast],
+            Self::Ocean => vec![Species::Leviathan],
+            Self::Plain => vec![Species::Dragon, Species::Beast],
+            Self::Forest => vec![Species::Beast],
+            Self::Mountain => vec![Species::Dragon],
+            Self::Desert => vec![Species::Worm, Species::Dragon],
+            Self::Jungle => vec![Species::Beast],
         }
     }
 
     fn color(self) -> Vec<u8> {
         match self {
-            Terrain::Ocean => vec![70, 90, 140],
-            Terrain::Plain => vec![120, 140, 80],
-            Terrain::Forest => vec![90, 150, 80],
-            Terrain::Mountain => vec![96, 96, 96],
-            Terrain::Desert => vec![160, 140, 90],
-            Terrain::Jungle => vec![40, 130, 80],
+            Self::Ocean => vec![70, 90, 140],
+            Self::Plain => vec![120, 140, 80],
+            Self::Forest => vec![90, 150, 80],
+            Self::Mountain => vec![96, 96, 96],
+            Self::Desert => vec![160, 140, 90],
+            Self::Jungle => vec![40, 130, 80],
         }
     }
 }
@@ -176,22 +176,24 @@ const ITEM_COUNT: usize = 32;
 impl fmt::Display for Item {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Item::Fish => write!(f, "Fish"),
-            Item::Plant(item) => write!(f, "{}", item.as_ref()),
-            Item::Metal(item) => write!(f, "{}", item.as_ref()),
-            Item::MetalGood(item) => write!(f, "{} Goods", item.as_ref()),
-            Item::Gem(item) => write!(f, "{}", item.as_ref()),
-            Item::CutGem(item) => write!(f, "Cut {}", item.as_ref()),
-            Item::WildAnimal(item) => write!(f, "Wild {}", item.as_ref()),
-            Item::TameAnimal(item) => write!(f, "Tame {}", item.as_ref()),
-            Item::Meat(item) => write!(f, "{} Meat", item.as_ref()),
+            Self::Fish => write!(f, "Fish"),
+            Self::Plant(item) => write!(f, "{}", item.as_ref()),
+            Self::Metal(item) => write!(f, "{}", item.as_ref()),
+            Self::MetalGood(item) => write!(f, "{} Goods", item.as_ref()),
+            Self::Gem(item) => write!(f, "{}", item.as_ref()),
+            Self::CutGem(item) => write!(f, "Cut {}", item.as_ref()),
+            Self::WildAnimal(item) => write!(f, "Wild {}", item.as_ref()),
+            Self::TameAnimal(item) => write!(f, "Tame {}", item.as_ref()),
+            Self::Meat(item) => write!(f, "{} Meat", item.as_ref()),
         }
     }
 }
 
-impl From<Item> for usize {
-    fn from(value: Item) -> Self {
-        unsafe { ALL_ITEMS.iter().position(|&m| m == value) }.unwrap()
+impl TryFrom<Item> for usize {
+    type Error = ();
+
+    fn try_from(value: Item) -> Result<Self, Self::Error> {
+        unsafe { ALL_ITEMS.iter().position(|&m| m == value) }.ok_or(())
     }
 }
 
@@ -209,7 +211,7 @@ pub struct Inventory(Vec<f32>);
 
 impl Default for Inventory {
     fn default() -> Self {
-        Inventory(vec![0.0; ITEM_COUNT])
+        Self(vec![0.0; ITEM_COUNT])
     }
 }
 
@@ -217,10 +219,7 @@ impl Inventory {
     fn get(&self, i: usize) -> f32 {
         match self.0.get(i) {
             None => 0.0,
-            Some(&res) => {
-                assert!(!res.is_nan());
-                res
-            }
+            Some(&res) => res,
         }
     }
 
@@ -232,6 +231,7 @@ impl Inventory {
     }
 
     fn add(&mut self, i: usize, v: f32) {
+        assert!(!v.is_nan(), "{i} => {v}");
         self.set(i, self.get(i) + v);
     }
 
@@ -331,7 +331,7 @@ impl City {
                 },
             );
         }
-        if self.population == 0 {
+        if self.population <= 0 {
             return;
         }
         // Produce resources and calculate food
@@ -354,7 +354,8 @@ impl City {
             // Deplete non-renewable resources and track food resources
             match item.into() {
                 Item::Metal(_) | Item::Gem(_) => {
-                    self.resource_gathering.add(item, -0.001 * production);
+                    self.resource_gathering
+                        .add(item, -config.mineral_depletion * production);
                 }
                 Item::Plant(_) | Item::Fish | Item::Meat(_) => {
                     total_food_resources += self.resources.get(item);
@@ -389,13 +390,7 @@ impl City {
                         Item::Meat(_) => 2.0,
                         _ => 1.0,
                     };
-                    let exp: f32 = amount / {
-                        if self.population as i64 == amount as i64 {
-                            1.0
-                        } else {
-                            self.population as f32 - amount
-                        }
-                    };
+                    let exp: f32 = amount / { (self.population as f32 - amount).exp() };
                     let val = price * 1.1f32.powf(exp);
                     if val.is_nan() {
                         0.0
@@ -410,10 +405,12 @@ impl City {
         }
         let net_food = total_food_resources - self.population as f32;
 
+        // At most, half of people die and 2% are born
         self.population += {
             let diff = net_food * config.population_constant;
             diff.floor() as i32 + i32::from(rng.gen::<f32>() < (diff - diff.floor()))
-        };
+        }
+        .clamp(-self.population / 2, self.population / 50);
 
         // Tick all living NPCs
         // IMPORTANT: During the loop, the city's npcs list is empty
@@ -485,10 +482,8 @@ impl City {
             let study_choices: Vec<u8> = Skill::iter()
                 .map(|skill| *npc.skills.entry(skill).or_insert(0) + 1)
                 .collect();
-            let study_choice = match WeightedIndex::new(study_choices) {
-                Ok(res) => Skill::iter().nth(res.sample(rng)),
-                Err(_) => None,
-            };
+            let study_choice = WeightedIndex::new(study_choices)
+                .map_or(None, |res| Skill::iter().nth(res.sample(rng)));
             if let Some(choice) = study_choice {
                 if {
                     let luck = rng.gen::<f32>();
@@ -524,12 +519,15 @@ impl City {
                         }
                         let Some(resource) = $material_type.choose(rng) else { break };
                         let quantity = min(
-                            self.resources.get($material(resource).into()) as i64,
+                            self.resources.get($material(resource).try_into().unwrap()) as i64,
                             prod as i64,
                         ) as f32;
-                        self.resources.add($material(resource).into(), -quantity);
-                        self.resources.add($product(resource).into(), quantity);
-                        self.production.add($product(resource).into(), quantity);
+                        self.resources
+                            .add($material(resource).try_into().unwrap(), -quantity);
+                        self.resources
+                            .add($product(resource).try_into().unwrap(), quantity);
+                        self.production
+                            .add($product(resource).try_into().unwrap(), quantity);
                         prod -= quantity;
                     }
                 };
@@ -570,20 +568,22 @@ pub struct Config {
     inland_city_density: f32,
     production_constant: f32,
     population_constant: f32,
+    mineral_depletion: f32,
     notable_npc_threshold: u8,
     trade_volume: f32,
     trade_quantity: i32,
 }
 
 impl Default for Config {
-    fn default() -> Config {
-        Config {
+    fn default() -> Self {
+        Self {
             gen_radius: 3,
             world_size: (40, 30),
             coastal_city_density: 0.15,
             inland_city_density: 0.02,
             production_constant: 60.0,
             population_constant: 0.0001,
+            mineral_depletion: 0.00001,
             notable_npc_threshold: 5,
             trade_volume: 50.0,
             trade_quantity: 20,
@@ -689,9 +689,15 @@ fn main() {
         match fs::read_to_string(args.path) {
             Ok(contents) => match json::parse(&contents) {
                 Ok(jsonvalue) => World::s_dejsonize(&jsonvalue),
-                err => {println!("{err:?}"); None},
+                err => {
+                    println!("{err:?}");
+                    None
+                }
             },
-            err => {println!("{err:?}"); None},
+            err => {
+                println!("{err:?}");
+                None
+            }
         }
     }
     .unwrap_or({
@@ -782,10 +788,7 @@ fn build_region_map(
     loop {
         indices.shuffle(rng);
         for index in indices.clone() {
-            if match region_map.get(index) {
-                Some(res) => res.is_some(),
-                None => false,
-            } {
+            if region_map.get(index).map_or(false, Option::is_some) {
                 indices.remove(
                     indices
                         .iter()
@@ -805,10 +808,7 @@ fn build_region_map(
                 region_map[index] = adj.choose(rng).copied();
                 break;
             }
-            if match region_map.get(index) {
-                Some(res) => res.is_none(),
-                None => false,
-            } {
+            if region_map.get(index).map_or(false, Option::is_none) {
                 regions += 1;
                 region_map[index] = Some(regions);
                 indices.remove(
@@ -887,8 +887,8 @@ fn random_region(
                 for resource_type in $resource_names {
                     if rng.gen::<f32>() < $resource {
                         resources.set(
-                            $resource_item(resource_type).into(),
-                            rng.gen::<f32>() * $resource + 1.0,
+                            $resource_item(resource_type).try_into().unwrap(),
+                            rng.gen::<f32>().mul_add($resource, 1.0),
                         );
                     }
                 }
@@ -898,7 +898,7 @@ fn random_region(
         run_type!(gem, Item::Gem, Gem::iter());
         run_type!(plant, Item::Plant, Plant::iter());
         run_type!(animal, Item::WildAnimal, Animal::iter());
-        resources.set(Item::Fish.into(), rng.gen::<f32>() * 2.0);
+        resources.set(Item::Fish.try_into().unwrap(), rng.gen::<f32>() * 2.0);
         resources
     };
     Region {
@@ -1056,7 +1056,7 @@ fn generate_cities(
                                 .resources
                                 .iter()
                                 .enumerate()
-                                .map(|(_, &val)| val + rng.gen::<f32>() * 0.1)
+                                .map(|(_, &val)| rng.gen::<f32>().mul_add(0.1, val))
                                 .collect(),
                         ),
                         data: HashMap::new(),
@@ -1117,8 +1117,16 @@ fn handle_trade(
             .iter()
             .enumerate()
             .min_by_key(|(_, &amount)| amount as i64)?;
-        (tup.0, *tup.1)
+        (tup.0, tup.1.floor())
     };
+
+    if first_resource.1.is_nan()
+        || second_resource.1.is_nan()
+        || first_resource.1 <= 0.0
+        || second_resource.1 <= 0.0
+    {
+        return None;
+    }
 
     // mutable references to update the cities' contents.
     // They have to be like this because you can't have two mutable references at the same time

@@ -1,11 +1,21 @@
+#![warn(clippy::pedantic, clippy::nursery)]
+#![allow(
+    clippy::cast_possible_truncation,
+    clippy::cast_possible_wrap,
+    clippy::cast_precision_loss,
+    clippy::cast_sign_loss,
+    clippy::cast_lossless,
+    clippy::too_many_lines,
+    clippy::wildcard_imports
+)]
 use crate::*;
 
 fn json_array_to_usize(arr: &JsonValue, config: &Config) -> Option<usize> {
     match arr {
         JsonValue::Array(coords) => {
-            let xcoord = json_int(coords.get(0)?)? as usize;
-            let ycoord = json_int(coords.get(1)?)? as usize;
-            Some(xcoord + ycoord * config.world_size.0)
+            let x = json_int(coords.get(0)?)? as usize;
+            let y = json_int(coords.get(1)?)? as usize;
+            Some(x + y * config.world_size.0)
         }
         _ => None,
     }
@@ -28,8 +38,10 @@ fn json_int(jsonvalue: &JsonValue) -> Option<i32> {
 
 fn json_float(jsonvalue: &JsonValue, depth: u16) -> Option<f32> {
     match jsonvalue {
-        JsonValue::Number(num) => Some(num.as_fixed_point_i64(depth).unwrap_or_default() as f32 / 10.0f32.powf(depth as f32)),
-        _ => None
+        JsonValue::Number(num) => Some(
+            num.as_fixed_point_i64(depth).unwrap_or_default() as f32 / 10.0f32.powf(depth as f32),
+        ),
+        _ => None,
     }
 }
 
@@ -61,7 +73,7 @@ impl<T: Jsonizable> Jsonizable for Vec<T> {
     fn dejsonize(src: &JsonValue, config: &Config) -> Option<Self> {
         match src {
             JsonValue::Array(array) => {
-                let mut result: Self = Vec::new();
+                let mut result: Self = Self::new();
                 for src in array {
                     result.push(T::dejsonize(src, config)?);
                 }
@@ -285,11 +297,8 @@ impl Jsonizable for Npc {
                         for skill in Skill::iter() {
                             skills.insert(
                                 skill,
-                                json_int(
-                                    object.get(skill.as_ref()).unwrap_or(&JsonValue::Null)
-                                    
-                                )
-                                .unwrap_or_default() as u8,
+                                json_int(object.get(skill.as_ref()).unwrap_or(&JsonValue::Null))
+                                    .unwrap_or_default() as u8,
                             );
                         }
                         skills
@@ -374,6 +383,7 @@ impl SuperJsonizable for Config {
             PRODUCTION_CONSTANT: self.production_constant,
             POPULATION_CONSTANT: self.population_constant,
             NOTABLE_NPC_THRESHOLD: self.notable_npc_threshold,
+            MINERAL_DEPLETION: self.mineral_depletion,
             TRADE_VOLUME: self.trade_volume,
             TRADE_QUANTITY: self.trade_quantity,
             ARMY_SIZE: 200,
@@ -387,16 +397,17 @@ impl SuperJsonizable for Config {
                 gen_radius: json_int(object.get("GEN_RADIUS")?)? as usize,
                 world_size: match object.get("WORLD_SIZE") {
                     Some(JsonValue::Array(array)) => {
-                        let xsize = json_int(array.get(0)?)? as usize;
-                        let ysize = json_int(array.get(1)?)? as usize;
-                        (xsize, ysize)
+                        let x = json_int(array.get(0)?)? as usize;
+                        let y = json_int(array.get(1)?)? as usize;
+                        (x, y)
                     }
                     _ => return None,
                 },
-                coastal_city_density: json_float(object.get("COASTAL_CITY_DENSITY")?, 3)?,
-                inland_city_density: json_float(object.get("INLAND_CITY_DENSITY")?, 3)?,
-                production_constant: json_float(object.get("PRODUCTION_CONSTANT")?, 3)?,
-                population_constant: json_float(object.get("POPULATION_CONSTANT")?, 3)?,
+                coastal_city_density: json_float(object.get("COASTAL_CITY_DENSITY")?, 4)?,
+                inland_city_density: json_float(object.get("INLAND_CITY_DENSITY")?, 4)?,
+                production_constant: json_float(object.get("PRODUCTION_CONSTANT")?, 6)?,
+                population_constant: json_float(object.get("POPULATION_CONSTANT")?, 6)?,
+                mineral_depletion: json_float(object.get("MINERAL_DEPLETION")?, 6)?,
                 notable_npc_threshold: json_int(object.get("NOTABLE_NPC_THRESHOLD")?)? as u8,
                 trade_volume: json_float(object.get("TRADE_VOLUME")?, 3)?,
                 trade_quantity: json_int(object.get("TRADE_QUANTITY")?)?,
@@ -412,16 +423,13 @@ impl SuperJsonizable for Species {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        match json_string(src) {
-            Some(str) => match str.as_ref() {
-                "Leviathan" => Some(Species::Leviathan),
-                "Dragon" => Some(Species::Dragon),
-                "Beast" => Some(Species::Beast),
-                "Worm" => Some(Species::Worm),
-                _ => None,
-            },
+        json_string(src).and_then(|str| match str.as_ref() {
+            "Leviathan" => Some(Self::Leviathan),
+            "Dragon" => Some(Self::Dragon),
+            "Beast" => Some(Self::Beast),
+            "Worm" => Some(Self::Worm),
             _ => None,
-        }
+        })
     }
 }
 
@@ -437,12 +445,12 @@ impl Jsonizable for Terrain {
     }
     fn dejsonize(src: &JsonValue, _config: &Config) -> Option<Self> {
         match json_string(src)?.as_ref() {
-            "Ocean" => Some(Terrain::Ocean),
-            "Plain" => Some(Terrain::Plain),
-            "Forest" => Some(Terrain::Forest),
-            "Mountain" => Some(Terrain::Mountain),
-            "Desert" => Some(Terrain::Desert),
-            "Jungle" => Some(Terrain::Jungle),
+            "Ocean" => Some(Self::Ocean),
+            "Plain" => Some(Self::Plain),
+            "Forest" => Some(Self::Forest),
+            "Mountain" => Some(Self::Mountain),
+            "Desert" => Some(Self::Desert),
+            "Jungle" => Some(Self::Jungle),
             _ => None,
         }
     }
