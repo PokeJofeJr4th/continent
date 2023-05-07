@@ -686,19 +686,9 @@ fn main() {
     let year_delimiter: u32 = args.duration / 100;
 
     let mut world = {
-        match fs::read_to_string(args.path) {
-            Ok(contents) => match json::parse(&contents) {
-                Ok(jsonvalue) => World::s_dejsonize(&jsonvalue),
-                err => {
-                    println!("{err:?}");
-                    None
-                }
-            },
-            err => {
-                println!("{err:?}");
-                None
-            }
-        }
+        fs::read_to_string(args.path).map_or(None, |contents| {
+            json::parse(&contents).map_or(None, |jsonvalue| World::s_dejsonize(&jsonvalue))
+        })
     }
     .unwrap_or({
         let config = Config::default();
