@@ -10,13 +10,14 @@
 
 use std::cmp::min;
 use std::collections::HashMap;
+use std::fs;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::slice::Iter;
-use std::{fmt, fs};
 
 use clap::Parser;
 use json::{array, object, JsonValue};
+use magic::MagicSystem;
 use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
@@ -25,6 +26,8 @@ use mkv::MarkovData;
 
 mod jsonize;
 use jsonize::SuperJsonizable;
+
+mod magic;
 
 macro_rules! mut_loop {
     ($original_list: expr => for $item: ident in $list: ident $func: expr) => {
@@ -127,95 +130,56 @@ impl Terrain {
     }
 }
 
-#[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
-pub enum Plant {
-    Apple,
-    Pepper,
-    Pumpkin,
-}
-
-#[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
-pub enum Metal {
-    Iron,
-    Copper,
-    Gold,
-    Silver,
-}
-
-#[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
-pub enum Gem {
-    Diamond,
-    Emerald,
-    Ruby,
-    Agate,
-}
-
-#[derive(Debug, Clone, Copy, AsRefStr, Eq, Hash, PartialEq, EnumIter)]
-pub enum Animal {
-    Deer,
-    Bear,
-    Rabbit,
-    Wolf,
+#[derive(Debug, Clone)]
+pub struct ItemType {
+    name: String,
+    rarity: u8,
+    abundance: u8,
+    value: u8,
+    taming: u8,
 }
 
 #[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 pub enum Item {
     Fish,
-    Plant(Plant),
-    Metal(Metal),
-    MetalGood(Metal),
-    Gem(Gem),
-    CutGem(Gem),
-    WildAnimal(Animal),
-    TameAnimal(Animal),
-    Meat(Animal),
+    Plant(u8),
+    Metal(u8),
+    MetalGood(u8),
+    Gem(u8),
+    CutGem(u8),
+    WildAnimal(u8),
+    TameAnimal(u8),
+    Meat(u8),
 }
 
-const ITEM_COUNT: usize = 32;
-
-impl fmt::Display for Item {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl Item {
+    fn to_string(self, items: &Items) -> String {
         match self {
-            Self::Fish => write!(f, "Fish"),
-            Self::Plant(item) => write!(f, "{}", item.as_ref()),
-            Self::Metal(item) => write!(f, "{}", item.as_ref()),
-            Self::MetalGood(item) => write!(f, "{} Goods", item.as_ref()),
-            Self::Gem(item) => write!(f, "{}", item.as_ref()),
-            Self::CutGem(item) => write!(f, "Cut {}", item.as_ref()),
-            Self::WildAnimal(item) => write!(f, "Wild {}", item.as_ref()),
-            Self::TameAnimal(item) => write!(f, "Tame {}", item.as_ref()),
-            Self::Meat(item) => write!(f, "{} Meat", item.as_ref()),
+            Self::Fish => String::from("Fish"),
+            Self::Plant(item) => items.plants[item as usize].name.clone(),
+            Self::Metal(item) => items.metals[item as usize].name.clone(),
+            Self::MetalGood(item) => format!("{} Goods", items.metals[item as usize].name),
+            Self::Gem(item) => items.gems[item as usize].name.clone(),
+            Self::CutGem(item) => format!("Cut {}", items.gems[item as usize].name),
+            Self::WildAnimal(item) => format!("Wild {}", items.animals[item as usize].name),
+            Self::TameAnimal(item) => format!("Tame {}", items.animals[item as usize].name),
+            Self::Meat(item) => format!("{} Meat", items.animals[item as usize].name),
         }
     }
-}
 
-impl TryFrom<Item> for usize {
-    type Error = ();
-
-    fn try_from(value: Item) -> Result<Self, Self::Error> {
-        unsafe { ALL_ITEMS.iter().position(|&m| m == value) }.ok_or(())
+    fn to_index(self, items: &Items) -> Option<usize> {
+        items.all.iter().position(|&m| m == self)
     }
 }
-
-impl From<usize> for Item {
-    fn from(value: usize) -> Self {
-        assert!(value < ITEM_COUNT);
-        unsafe { ALL_ITEMS[value] }
-    }
-}
-
-static mut ALL_ITEMS: Vec<Item> = Vec::new();
 
 #[derive(Debug, Clone)]
 pub struct Inventory(Vec<f32>);
 
-impl Default for Inventory {
-    fn default() -> Self {
-        Self(vec![0.0; ITEM_COUNT])
-    }
-}
-
 impl Inventory {
+    fn default(items: &Items) -> Self {
+        Self(vec![0.0; items.all.len()])
+    }
+
     fn get(&self, i: usize) -> f32 {
         match self.0.get(i) {
             None => 0.0,
@@ -318,6 +282,7 @@ impl City {
         rng: &mut ThreadRng,
         current_year: u32,
         config: &Config,
+        items: &Items,
         markov_data_npc: &MarkovData,
     ) {
         // Save data
@@ -326,8 +291,8 @@ impl City {
                 current_year.to_string(),
                 Snapshot {
                     population: self.population,
-                    production: std::mem::take(&mut self.production),
-                    imports: std::mem::take(&mut self.imports),
+                    production: std::mem::replace(&mut self.production, Inventory::default(items)),
+                    imports: std::mem::replace(&mut self.imports, Inventory::default(items)),
                 },
             );
         }
@@ -336,7 +301,7 @@ impl City {
         }
         // Produce resources and calculate food
         let mut total_food_resources = 0.0;
-        for item in 0..ITEM_COUNT {
+        for item in 0..items.all.len() {
             let production = {
                 let production = inverse_add(
                     self.population as f32 * 1.0,
@@ -352,12 +317,12 @@ impl City {
             self.resources.add(item, production);
             self.production.add(item, production);
             // Deplete non-renewable resources and track food resources
-            match item.into() {
-                Item::Metal(_) | Item::Gem(_) => {
+            match items.all.get(item) {
+                Some(Item::Metal(_) | Item::Gem(_)) => {
                     self.resource_gathering
                         .add(item, -config.mineral_depletion * production);
                 }
-                Item::Plant(_) | Item::Fish | Item::Meat(_) => {
+                Some(Item::Plant(_) | Item::Fish | Item::Meat(_)) => {
                     total_food_resources += self.resources.get(item);
                 }
                 _ => (),
@@ -369,11 +334,8 @@ impl City {
             .enumerate()
             .map(|(item, &amount)| {
                 let mut demand = 0.0;
-                match item.into() {
-                    Item::Plant(_) | Item::Fish | Item::Meat(_) => {
-                        demand += (self.population as f32) * amount / total_food_resources;
-                    }
-                    _ => {}
+                if let Some(Item::Plant(_) | Item::Fish | Item::Meat(_)) = items.all.get(item) {
+                    demand += (self.population as f32) * amount / total_food_resources;
                 }
                 demand
             })
@@ -383,11 +345,11 @@ impl City {
                 .iter()
                 .enumerate()
                 .map(|(item, &amount)| {
-                    let price: f32 = match item.into() {
-                        Item::MetalGood(_) => 4.0,
-                        Item::CutGem(_) => 10.0,
-                        Item::TameAnimal(_) => 5.0,
-                        Item::Meat(_) => 2.0,
+                    let price: f32 = match items.all.get(item) {
+                        Some(Item::MetalGood(_)) => 4.0,
+                        Some(Item::CutGem(_)) => 10.0,
+                        Some(Item::TameAnimal(_)) => 5.0,
+                        Some(Item::Meat(_)) => 2.0,
                         _ => 1.0,
                     };
                     let exp: f32 = amount / { (self.population as f32 - amount).exp() };
@@ -417,7 +379,7 @@ impl City {
         let mut npcs = std::mem::take(&mut self.npcs);
         let mut living_npcs: Vec<&mut Npc> = npcs.iter_mut().filter(|npc| npc.alive).collect();
         mut_loop!(living_npcs => for npc in list {
-            self.tick_npc(npc, rng, current_year, config);
+            self.tick_npc(npc, rng, current_year, config, items);
         });
         if living_npcs.len() < 3 {
             npcs.push(self.generate_npc(rng, current_year, markov_data_npc));
@@ -425,7 +387,14 @@ impl City {
         self.npcs = npcs;
     }
 
-    fn tick_npc(&mut self, npc: &mut Npc, rng: &mut ThreadRng, current_year: u32, config: &Config) {
+    fn tick_npc(
+        &mut self,
+        npc: &mut Npc,
+        rng: &mut ThreadRng,
+        current_year: u32,
+        config: &Config,
+        items: &Items,
+    ) {
         npc.age += 1;
         // Die of old age
         if npc.age > 80 {
@@ -517,25 +486,21 @@ impl City {
                         if prod < 0.0 {
                             break;
                         }
-                        let Some(resource) = $material_type.choose(rng) else { break };
-                        let quantity = min(
-                            self.resources.get($material(resource).try_into().unwrap()) as i64,
-                            prod as i64,
-                        ) as f32;
-                        self.resources
-                            .add($material(resource).try_into().unwrap(), -quantity);
-                        self.resources
-                            .add($product(resource).try_into().unwrap(), quantity);
-                        self.production
-                            .add($product(resource).try_into().unwrap(), quantity);
+                        let resource = rng.gen_range(0..$material_type.len());
+                        let res_usize = $material(resource as u8).to_index(items).unwrap();
+                        let quantity =
+                            min(self.resources.get(res_usize) as i64, prod as i64) as f32;
+                        self.resources.add(res_usize, -quantity);
+                        self.resources.add(res_usize, quantity);
+                        self.production.add(res_usize, quantity);
                         prod -= quantity;
                     }
                 };
             }
-            produce_goods!(&Skill::Metalworking, Metal::iter(), &Item::Metal => &Item::MetalGood);
-            produce_goods!(&Skill::AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::TameAnimal);
-            produce_goods!(&Skill::AnimalTraining, Animal::iter(), &Item::WildAnimal => &Item::Meat);
-            produce_goods!(&Skill::Gemcutting, Gem::iter(), &Item::Gem => &Item::CutGem);
+            produce_goods!(&Skill::Metalworking, items.metals, &Item::Metal => &Item::MetalGood);
+            produce_goods!(&Skill::AnimalTraining, items.animals, &Item::WildAnimal => &Item::Meat);
+            produce_goods!(&Skill::AnimalTraining, items.animals, &Item::WildAnimal => &Item::TameAnimal);
+            produce_goods!(&Skill::Gemcutting, items.gems, &Item::Gem => &Item::CutGem);
         }
     }
 
@@ -591,6 +556,14 @@ impl Default for Config {
     }
 }
 
+pub struct Items {
+    all: Vec<Item>,
+    plants: Vec<ItemType>,
+    metals: Vec<ItemType>,
+    gems: Vec<ItemType>,
+    animals: Vec<ItemType>,
+}
+
 pub struct World {
     config: Config,
     current_year: u32,
@@ -599,12 +572,20 @@ pub struct World {
     city_list: HashMap<usize, City>,
     trade_connections: HashMap<(usize, usize), i32>,
     trade_connections_list: Vec<(usize, usize)>,
+    items: Items,
+    magic: MagicSystem,
 }
 
 impl World {
     fn tick(&mut self, rng: &mut ThreadRng, markov_data_npc: &MarkovData) {
         for city in self.city_list.values_mut() {
-            city.tick(rng, self.current_year, &self.config, markov_data_npc);
+            city.tick(
+                rng,
+                self.current_year,
+                &self.config,
+                &self.items,
+                markov_data_npc,
+            );
         }
         for _ in 0..self.config.trade_quantity {
             let _ = handle_trade(
@@ -615,6 +596,7 @@ impl World {
                 &mut self.city_list,
                 &mut self.trade_connections,
                 &self.config,
+                &self.items,
             );
         }
         self.current_year += 1;
@@ -628,37 +610,15 @@ struct Args {
     duration: u32,
 
     // load from file (default don't)
-    #[arg(short, long, default_value_t = String::from(""))]
+    #[arg(short, long)]
     path: String,
 
     // save to file (default foo.json)
-    #[arg(short, long, default_value_t = String::from("./saves/foo.json"))]
+    #[arg(short, long)]
     save: String,
 }
 
 fn main() {
-    unsafe {
-        // This is safe because nothing's accessing it yet
-        ALL_ITEMS.push(Item::Fish);
-        for plant in Plant::iter() {
-            ALL_ITEMS.push(Item::Plant(plant));
-        }
-        for metal in Metal::iter() {
-            ALL_ITEMS.push(Item::Metal(metal));
-            ALL_ITEMS.push(Item::MetalGood(metal));
-        }
-        for gem in Gem::iter() {
-            ALL_ITEMS.push(Item::Gem(gem));
-            ALL_ITEMS.push(Item::CutGem(gem));
-        }
-        for animal in Animal::iter() {
-            ALL_ITEMS.push(Item::WildAnimal(animal));
-            ALL_ITEMS.push(Item::TameAnimal(animal));
-            ALL_ITEMS.push(Item::Meat(animal));
-        }
-        assert_eq!(ALL_ITEMS.len(), ITEM_COUNT);
-    }
-
     let mut rng = thread_rng();
 
     macro_rules! markov_data {
@@ -673,43 +633,125 @@ fn main() {
 
     markov_data! {
         // markov_data_animal from "markov/animal.mkv",
-        // markov_data_gemstone from "markov/gemstone.mkv",
-        // markov_data_magic from "markov/magic.mkv",
-        // markov_data_metal from "markov/metal.mkv",
+        markov_data_gemstone from "markov/gemstone.mkv",
+        markov_data_magic from "markov/magic.mkv",
+        markov_data_metal from "markov/metal.mkv",
         markov_data_monster from "markov/monster.mkv",
-        markov_data_name from "markov/name.mkv"
-        // markov_data_plant from "markov/plant.mkv"
+        markov_data_name from "markov/name.mkv",
+        markov_data_plant from "markov/plant.mkv"
     }
 
     let args: Args = Args::parse();
 
-    let year_delimiter: u32 = args.duration / 100;
+    let year_delimiter: u32 = (args.duration / 100).max(1);
 
     let mut world = {
         fs::read_to_string(args.path).map_or(None, |contents| {
-            json::parse(&contents).map_or(None, |jsonvalue| World::s_dejsonize(&jsonvalue))
+            json::parse(&contents).map_or(None, |jsonvalue| {
+                World::s_dejsonize(&jsonvalue)
+            })
         })
     }
     .unwrap_or({
+        let mut all_items = vec![Item::Fish];
+        let mut plants: Vec<ItemType> = ["Apple", "Pumpkin"]
+            .iter()
+            .map(|&s| ItemType {
+                name: String::from(s),
+                rarity: 2,
+                abundance: 4,
+                value: 1,
+                taming: 0,
+            })
+            .collect();
+        let mut metals: Vec<ItemType> = ["Iron", "Gold"]
+            .iter()
+            .map(|&s| ItemType {
+                name: String::from(s),
+                rarity: 4,
+                abundance: 5,
+                value: 4,
+                taming: 0,
+            })
+            .collect();
+        let mut gems: Vec<ItemType> = ["Diamond", "Ruby"]
+            .iter()
+            .map(|&s| ItemType {
+                name: String::from(s),
+                rarity: 8,
+                abundance: 2,
+                value: 6,
+                taming: 0,
+            })
+            .collect();
+        let animals: Vec<ItemType> = ["Deer", "Wolf"]
+            .iter()
+            .map(|&s| ItemType {
+                name: String::from(s),
+                rarity: 5,
+                abundance: 6,
+                value: 2,
+                taming: 4,
+            })
+            .collect();
+        let magic = MagicSystem::gen(
+            &mut rng,
+            &markov_data_magic,
+            &markov_data_gemstone,
+            &markov_data_metal,
+            &markov_data_plant,
+        );
+        match &magic.material_type {
+            magic::MaterialType::Plant => plants.push(magic.material.clone()),
+            magic::MaterialType::Gem => gems.push(magic.material.clone()),
+            magic::MaterialType::Metal => metals.push(magic.material.clone()),
+        };
+        for plant in 0..plants.len() {
+            all_items.push(Item::Plant(plant as u8));
+        }
+        for metal in 0..metals.len() {
+            all_items.push(Item::Metal(metal as u8));
+            all_items.push(Item::MetalGood(metal as u8));
+        }
+        for gem in 0..gems.len() {
+            all_items.push(Item::Gem(gem as u8));
+            all_items.push(Item::CutGem(gem as u8));
+        }
+        for animal in 0..animals.len() {
+            all_items.push(Item::WildAnimal(animal as u8));
+            all_items.push(Item::TameAnimal(animal as u8));
+            all_items.push(Item::Meat(animal as u8));
+        }
+        let items = Items {
+            all: all_items,
+            plants,
+            metals,
+            gems,
+            animals,
+        };
         let config = Config::default();
-        let (region_map, region_list) = build_region_map(&mut rng, &markov_data_monster, &config);
+        let (region_map, region_list) =
+            build_region_map(&mut rng, &markov_data_monster, &config, &items);
         let (city_list, trade_connections) = generate_cities(
             &region_map,
             &region_list,
             &mut rng,
             &markov_data_name,
             &config,
+            &items,
         );
         let trade_connections_list: Vec<(usize, usize)> =
             trade_connections.iter().map(|(&k, _v)| k).collect();
         World {
             config,
+            magic,
             current_year: 0,
             region_map,
             region_list,
             city_list,
             trade_connections,
             trade_connections_list,
+            items,
         }
     });
 
@@ -763,6 +805,7 @@ fn build_region_map(
     rng: &mut ThreadRng,
     markov_data_monster: &MarkovData,
     config: &Config,
+    items: &Items,
 ) -> (Vec<usize>, Vec<Region>) {
     let mut regions = 0;
     let mut region_map = vec![None; config.world_size.0 * config.world_size.1];
@@ -823,6 +866,7 @@ fn build_region_map(
                 regions,
                 markov_data_monster,
                 config,
+                items,
             )
         })
         .collect();
@@ -834,6 +878,7 @@ fn build_region_map(
             regions,
             markov_data_monster,
             config,
+            items,
         );
         base_region.terrain = Terrain::Ocean;
         base_region
@@ -848,6 +893,7 @@ fn random_region(
     region_count: usize,
     markov_data_monster: &MarkovData,
     config: &Config,
+    items: &Items,
 ) -> Region {
     let tiles: Vec<usize> = (0..(config.world_size.0 * config.world_size.1))
         .filter(|&i| region_map[i] == id)
@@ -870,25 +916,25 @@ fn random_region(
             Terrain::Ocean => (0.0, 0.0, 0.0, 0.0),
         };
 
-        let mut resources = Inventory::default();
+        let mut resources = Inventory::default(items);
 
         macro_rules! run_type {
             ($resource : expr, $resource_item : expr, $resource_names : expr) => {
-                for resource_type in $resource_names {
+                for resource_type in 0..$resource_names.len() {
                     if rng.gen::<f32>() < $resource {
                         resources.set(
-                            $resource_item(resource_type).try_into().unwrap(),
+                            $resource_item(resource_type as u8).to_index(items).unwrap(),
                             rng.gen::<f32>().mul_add($resource, 1.0),
                         );
                     }
                 }
             };
         }
-        run_type!(metal, Item::Metal, Metal::iter());
-        run_type!(gem, Item::Gem, Gem::iter());
-        run_type!(plant, Item::Plant, Plant::iter());
-        run_type!(animal, Item::WildAnimal, Animal::iter());
-        resources.set(Item::Fish.try_into().unwrap(), rng.gen::<f32>() * 2.0);
+        run_type!(metal, Item::Metal, items.metals);
+        run_type!(gem, Item::Gem, items.gems);
+        run_type!(plant, Item::Plant, items.plants);
+        run_type!(animal, Item::WildAnimal, items.animals);
+        resources.set(0, rng.gen::<f32>() * 2.0);
         resources
     };
     Region {
@@ -910,7 +956,7 @@ fn random_region(
             Some(Monster {
                 alive: true,
                 location: *tiles.choose(rng).unwrap(),
-                inventory: Inventory::default(),
+                inventory: Inventory::default(items),
                 species: String::from(species.as_ref()),
                 name: markov_data_monster.sample(rng),
                 desc: {
@@ -998,6 +1044,7 @@ fn generate_cities(
     rng: &mut ThreadRng,
     markov_data: &mkv::MarkovData,
     config: &Config,
+    items: &Items,
 ) -> (HashMap<usize, City>, HashMap<(usize, usize), i32>) {
     let mut possible_cities = Vec::new();
     for x in 0..region_map.len() {
@@ -1039,8 +1086,8 @@ fn generate_cities(
                         name: markov_data.sample(rng),
                         npcs: Vec::new(),
                         population: 100,
-                        resources: Inventory::default(),
-                        economy: Inventory::default(),
+                        resources: Inventory::default(items),
+                        economy: Inventory::default(items),
                         resource_gathering: Inventory(
                             region_list[region_map[pos]]
                                 .resources
@@ -1050,8 +1097,8 @@ fn generate_cities(
                                 .collect(),
                         ),
                         data: HashMap::new(),
-                        imports: Inventory::default(),
-                        production: Inventory::default(),
+                        imports: Inventory::default(items),
+                        production: Inventory::default(items),
                     },
                 )
             })
@@ -1077,13 +1124,14 @@ fn handle_trade(
     city_list: &mut HashMap<usize, City>,
     trade_connections: &mut HashMap<(usize, usize), i32>,
     config: &Config,
+    items: &Items,
 ) -> Option<()> {
     // immutable references to generate the resource lists
     let first_city = city_list.get(&route.0)?;
     let second_city = city_list.get(&route.1)?;
 
     let (first_city_supply, second_city_supply): (Vec<f32>, Vec<f32>) = {
-        (0..ITEM_COUNT)
+        (0..items.all.len())
             .map(|item| {
                 (
                     second_city.economy.get(item) * config.trade_volume

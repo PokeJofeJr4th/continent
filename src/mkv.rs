@@ -67,15 +67,17 @@ impl MarkovData {
         // println!("{result:?}");
         if 5 < result.len() && result.len() < 15 {
             Some(
+                // capitalize first letter of each word
                 result
                     .split(' ')
                     .map(|word| {
                         let mut chars = word.chars();
                         chars.next().map_or(String::new(), |first| {
                             first.to_uppercase().collect::<String>() + chars.as_str()
-                        }) + " "
+                        })
                     })
-                    .collect::<String>(),
+                    .collect::<Vec<String>>()
+                    .join(" "),
             )
         } else {
             None

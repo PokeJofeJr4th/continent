@@ -29,7 +29,8 @@ RegionList = []
 CityList = []
 trade_connections = {}
 current_year = 0
-Magic = {"Material": ["", (), ""]}  # 0: Name, 1: (rarity, vein size, value), 2: Type (Metal/Gem/Plant)
+# 0: Name, 1: (rarity, vein size, value), 2: Type (Metal/Gem/Plant)
+Magic = {"Material": ["", (), ""]}
 
 # (rarity, vein size, value)
 Metals = {}
@@ -55,7 +56,8 @@ class Region:
         if terrain is not None:
             self.terrain = terrain
         else:
-            self.terrain = random.choice([*(k for k in Biomes.keys() if k != "Ocean"), "Sea", "Sea"])
+            self.terrain = random.choice(
+                [*(k for k in Biomes.keys() if k != "Ocean"), "Sea", "Sea"])
         self.ancestor_race = None
         self.adjacent_regions = []
         self.demographics = {}
@@ -72,22 +74,26 @@ class Region:
             for metal in Metals.keys():
                 if random.random() > metal_amount - Metals[metal][0] / 20:
                     continue
-                self.resources[metal] = (roundrand() + 1) * metal_amount * Metals[metal][1]
+                self.resources[metal] = (
+                    roundrand() + 1) * metal_amount * Metals[metal][1]
             gemstone_amount = self.resources.pop("Gemstone")
             for gem in Gems.keys():
                 if random.random() > gemstone_amount - Gems[gem][0] / 20:
                     continue
-                self.resources[gem] = (roundrand() + 1) * gemstone_amount * Gems[gem][1]
+                self.resources[gem] = (roundrand() + 1) * \
+                    gemstone_amount * Gems[gem][1]
             plant_amount = self.resources.pop("Plant")
             for plant in Plants.keys():
                 if random.random() > plant_amount - Plants[plant][0] / 20 or random.random() < 0.8:
                     continue
-                self.resources[plant] = (roundrand() + 1) * plant_amount * Plants[plant][1]
+                self.resources[plant] = (
+                    roundrand() + 1) * plant_amount * Plants[plant][1]
             animal_amount = self.resources.pop("Animal")
             for animal in Animals.keys():
                 if random.random() > animal_amount - Animals[animal][0] / 20 or random.random() < 0.1:
                     continue
-                self.resources[animal] = (roundrand() + 1) * animal_amount * Animals[animal][1] / 4
+                self.resources[animal] = (
+                    roundrand() + 1) * animal_amount * Animals[animal][1] / 4
         try:
             if Biomes[self.terrain]["Monsters"]:
                 self.monster = Monster(self)
@@ -140,7 +146,8 @@ class City:
         self.imports = {}
         self.trade = []
         self.production = {}
-        self.resource_gathering = {k: v * 10 for k, v in RegionList[self.region].resources.items()}
+        self.resource_gathering = {k: v * 10 for k,
+                                   v in RegionList[self.region].resources.items()}
         for r in self.resource_gathering.keys():
             self.resource_gathering[r] += roundrand() / 10
 
@@ -162,7 +169,8 @@ class City:
             self.cultural_values[k] = random.randint(1, 5)
 
     def generate_npc(self, nobility=False, title="Citizen"):
-        race = random.choices([*self.demographics.keys()], [*self.demographics.values()])[0]
+        race = random.choices([*self.demographics.keys()],
+                              [*self.demographics.values()])[0]
         if nobility:
             weights = [*(x ** 5 for x in self.demographics.values())]
             weight_sum = sum(weights)
@@ -172,7 +180,8 @@ class City:
         self.npcs.append(NPC(race, name, self.pos, current_year, title))
 
     def cull_npcs(self):
-        self.npcs = [npc for npc in self.npcs if npc.alive or len(npc.life) > config["NOTABLE_NPC_THRESHOLD"]]
+        self.npcs = [npc for npc in self.npcs if npc.alive or len(
+            npc.life) > config["NOTABLE_NPC_THRESHOLD"]]
 
     def tick(self):
         if self.population == 0:
@@ -181,7 +190,8 @@ class City:
         military_score = 0
         for army in self.armies:
             military_score += army["Size"]
-        military_score *= config["ARMY_SIZE"] / self.cultural_values["Might"] / config["ARMY_PARAMETER"]
+        military_score *= config["ARMY_SIZE"] / \
+            self.cultural_values["Might"] / config["ARMY_PARAMETER"]
         if military_score < self.population and self.population > 10 * config["ARMY_SIZE"]:
             self.create_army()
             self.population -= config["ARMY_SIZE"]
@@ -196,10 +206,11 @@ class City:
 
         for item in self.resource_gathering.keys():
             assert self.resource_gathering[
-                       item] >= 0, f"{self.name} had {self.resource_gathering[item]} {item}. Somethin' ain't right."
+                item] >= 0, f"{self.name} had {self.resource_gathering[item]} {item}. Somethin' ain't right."
             assert self.homunculi >= 0, f"{self.name} had {self.homunculi} homunculi. Somethin' ain't right."
             production = \
-                {{resistance_add('self.resource_gathering[item] * config["MAX_PRODUCTION_CONSTANT"]', '(self.population + self.homunculi) * 2')}}
+                {{resistance_add(
+                    'self.resource_gathering[item] * config["MAX_PRODUCTION_CONSTANT"]', '(self.population + self.homunculi) * 2')}}
             if production < 0:
                 print(production)
             {{inv_opeq('self.resources', 'item', '+', 'production')}}
@@ -226,16 +237,20 @@ class City:
         net_food = 0
         for demanded_item in demand.keys():
             # If positive, this is the number of desired but not available. If negative, this is the number extra
-            demand[demanded_item] -= {{getinv('self.resources', 'demanded_item')}}
+            demand[demanded_item] -= {
+                {getinv('self.resources', 'demanded_item')}}
             self.economy[demanded_item] = 1
             mat = {{extract_material('demanded_item')}}
             if demanded_item in Goods.keys():
                 self.economy[demanded_item] = Goods[demanded_item][2]
-            elif mat in Metals.keys() and demanded_item[:-6] == " Goods":  # Metal goods are 4x as valuable as metal
+            # Metal goods are 4x as valuable as metal
+            elif mat in Metals.keys() and demanded_item[:-6] == " Goods":
                 self.economy[demanded_item] = Metals[mat][2] * 4
-            elif mat in Gems.keys() and demanded_item[:4] == "Cut ":  # Cut gems are 10x as valuable as uncut gems
+            # Cut gems are 10x as valuable as uncut gems
+            elif mat in Gems.keys() and demanded_item[:4] == "Cut ":
                 self.economy[demanded_item] = Gems[mat][2] * 10
-            elif mat in Animals.keys() and demanded_item[:5] == "Tame ":  # Tame animals are 4x as valuable as others
+            # Tame animals are 4x as valuable as others
+            elif mat in Animals.keys() and demanded_item[:5] == "Tame ":
                 self.economy[demanded_item] = Animals[mat][2] * 4
             exp = demand[demanded_item] / (
                 self.population - demand[demanded_item] if self.population != demand[demanded_item] else 1)
@@ -262,7 +277,8 @@ class City:
         for k in self.economy.keys():
             self.economy[k] /= total_economy
         # Population Growth
-        self.population += math.floor(net_food * config["POPULATION_GROWTH_CONSTANT"])
+        self.population += math.floor(net_food *
+                                      config["POPULATION_GROWTH_CONSTANT"])
         if random.random() < net_food * config["POPULATION_GROWTH_CONSTANT"] - math.floor(
                 net_food * config["POPULATION_GROWTH_CONSTANT"]):
             self.population += 1
@@ -289,7 +305,8 @@ class City:
                         {{getinv('new_ruler.skills', '"Leadership"')}} or new_ruler.pos == self.pos:
                     new_ruler.title = "Ruler"
                     new_ruler.reputation += 2
-                    new_ruler.life.append(LifeEvent(new_ruler, current_year, f"became the ruler of {self.name}"))
+                    new_ruler.life.append(
+                        LifeEvent(new_ruler, current_year, f"became the ruler of {self.name}"))
         if alive_count < self.population / config["NPC_COUNT"] and random.random() < 0.1:
             self.generate_npc()
         # Keep track of data
@@ -358,7 +375,7 @@ class City:
 
     def __str__(self):
         return self.name + " (" + self.majority_race + " city), in a " + RegionList[self.region].terrain.lower() + \
-               ". Population " + str(self.population)
+            ". Population " + str(self.population)
 
     def describe(self):
         for npc in self.npcs:
@@ -416,8 +433,10 @@ class City:
     def jsonize(self):
         self.cull_npcs()
 
-        keys_prod = list(dict.fromkeys([*(vv for k, v in self.data.items() for vv in v["production"])]))
-        keys_import = list(dict.fromkeys([*(vv for k, v in self.data.items() for vv in v["imports"])]))
+        keys_prod = list(dict.fromkeys(
+            [*(vv for k, v in self.data.items() for vv in v["production"])]))
+        keys_import = list(dict.fromkeys(
+            [*(vv for k, v in self.data.items() for vv in v["imports"])]))
         self.data = {k: ({"population": v["population"], "production": {
             kk: (v["production"][kk] if kk in v["production"].keys() else 0) for kk in keys_prod
         }, "imports": {
@@ -436,7 +455,8 @@ class City:
 class NPC:
     def __init__(self, race, name, pos, birth, title="Citizen"):
         self.race = race
-        self.lifespan = {"Human": 70, "Dwarf": 120, "Elf": 1000, "Goblin": 25, "Orc": 50}[race]
+        self.lifespan = {"Human": 70, "Dwarf": 120,
+                         "Elf": 1000, "Goblin": 25, "Orc": 50}[race]
         self.name = name
         self.title = title
         self.pos = pos
@@ -460,7 +480,8 @@ class NPC:
             self.alive = False
             if self.pos == self.origin:
                 WorldMap[self.origin]["Structure"].resources = \
-                    {{add_inv('self.inventory', 'WorldMap[self.origin]["Structure"].resources')}}
+                    {{add_inv('self.inventory',
+                              'WorldMap[self.origin]["Structure"].resources')}}
                 self.inventory = {}
             return
 
@@ -472,14 +493,17 @@ class NPC:
             traveler_options.remove(self.origin)
 
         if self.pos != self.origin and traveler_options != []:
-            self.pos = random.choice(traveler_options)  # Travel to a random location within the region
+            # Travel to a random location within the region
+            self.pos = random.choice(traveler_options)
             if self.pos == self.origin:
-                self.life.append(LifeEvent(self, current_year, " stopped traveling"))
+                self.life.append(
+                    LifeEvent(self, current_year, " stopped traveling"))
                 return
             for monster in (_.monster for _ in RegionList):
                 if self.pos == monster.location and monster.alive:  # Combat
                     luck = random.random()
-                    result = luck / (1 - luck) + {{getinv('self.skills', '"Adventuring"')}}
+                    result = luck / (1 - luck) + \
+                        {{getinv('self.skills', '"Adventuring"')}}
                     if {{getinv('self.skills', 'Magic["Name"]')}} > 0:
                         for k in Magic["Abilities"]:
                             if k["Type"] != "Combat":
@@ -489,39 +513,49 @@ class NPC:
                                 continue
                             res_types = [k["Component"]]
                             if k["Component"] == "Gem":
-                                res_types = [*(f"Cut {k}" for k in Gems.keys())]
+                                res_types = [
+                                    *(f"Cut {k}" for k in Gems.keys())]
                             if k["Component"] == "Metal":
-                                res_types = [*(f"{k} Goods" for k in Metals.keys())]
+                                res_types = [
+                                    *(f"{k} Goods" for k in Metals.keys())]
                             ability_res = [*shuffle_dict({k: v for k, v in self.inventory.items()
                                                           if k in res_types and v > 0}).items()]
                             if len(ability_res) > 0:
                                 if ability_res[0][1] <= 0:
                                     continue
                                 amount = min(k["Strength"], ability_res[0][1])
-                                {{inv_opeq('self.inventory', 'ability_res[0][0]', '-', 'amount')}}
+                                {{inv_opeq('self.inventory',
+                                           'ability_res[0][0]', '-', 'amount')}}
                                 # print(ability_res[0][0], ability_res[0][1])
                                 result += amount
                     self.reputation += 2
                     if result < 8:  # Monster kills NPC
                         self.alive = False
-                        monster.inventory = {{add_inv('self.inventory', 'monster.inventory')}}
+                        monster.inventory = {
+                            {add_inv('self.inventory', 'monster.inventory')}}
                         self.inventory = {}
-                        self.life.append(DeathEvent(self, current_year, "a battle with " + monster.name))
+                        self.life.append(DeathEvent(
+                            self, current_year, "a battle with " + monster.name))
                         break
                     elif result < 25:  # NPC escapes Monster
-                        self.life.append(LifeEvent(self, current_year, " fought " + monster.name + " and escaped"))
+                        self.life.append(
+                            LifeEvent(self, current_year, " fought " + monster.name + " and escaped"))
                         self.skills['Adventuring'] += 1
                         if self.skills['Adventuring'] == 10:
-                            self.life.append(LifeEvent(self, current_year, f"became a master in adventuring"))
+                            self.life.append(
+                                LifeEvent(self, current_year, f"became a master in adventuring"))
                         elif self.skills['Adventuring'] == 20:
-                            self.life.append(LifeEvent(self, current_year, f"became an expert in adventuring"))
+                            self.life.append(
+                                LifeEvent(self, current_year, f"became an expert in adventuring"))
                     else:  # NPC defeats Monster
-                        self.life.append(LifeEvent(self, current_year, " defeated " + monster.name))
+                        self.life.append(
+                            LifeEvent(self, current_year, " defeated " + monster.name))
                         for city in [*(WorldMap[c]["Structure"] for c in CityList if
                                        c in RegionList[RegionMap[self.pos]].tiles)]:
                             city.history.append(
                                 CityEvent(city, current_year, f" celebrated the defeat of {monster.name} by {self}"))
-                        self.inventory = {{add_inv('self.inventory', 'monster.inventory')}}
+                        self.inventory = {
+                            {add_inv('self.inventory', 'monster.inventory')}}
                         monster.inventory = {}
                         monster.alive = False
                         self.reputation += 2
@@ -529,7 +563,8 @@ class NPC:
                 if self.pos in CityList:  # Enter another city
                     my_city = WorldMap[self.origin]["Structure"]
                     other_city = WorldMap[self.pos]["Structure"]
-                    culture_distance = {{cultural_distance("my_city", "other_city")}}
+                    culture_distance = {
+                        {cultural_distance("my_city", "other_city")}}
                     cultural_differences = {k: abs(v - other_city.cultural_values[k]) for k, v in
                                             my_city.cultural_values.items()}
                     biggest_difference = max(cultural_differences.values())
@@ -539,9 +574,10 @@ class NPC:
                         if cultural_differences[k] != biggest_difference:
                             continue
                         difficulty = culture_distance * cultural_differences[k] - \
-                                     {{getinv('self.skills', '"Philosophy"')}}
+                            {{getinv('self.skills', '"Philosophy"')}}
                         luck = random.random()
-                        if luck / (1 - luck) > difficulty:  # This can be anywhere from 0 to infinity
+                        # This can be anywhere from 0 to infinity
+                        if luck / (1 - luck) > difficulty:
                             other_city.cultural_values[k] = my_city.cultural_values[k]
                             self.life.append(LifeEvent(self, current_year,
                                                        f"convinced {other_city.name} to {'reject' if my_city.cultural_values[k] < 3 else 'accept' if my_city.cultural_values[k] > 3 else 'become neutral to'} {k}"))
@@ -552,7 +588,8 @@ class NPC:
 
         if self.age > 15 and random.random() * 10 < (
                 {{getinv('self.skills', '"Adventuring"')}} / self.age) and traveler_options != []:
-            self.pos = random.choice(traveler_options)  # Travel to a random location within the region
+            # Travel to a random location within the region
+            self.pos = random.choice(traveler_options)
             self.life.append(LifeEvent(self, current_year, " began traveling"))
             self.reputation += 1
             # Bring Magic Items With
@@ -569,14 +606,18 @@ class NPC:
                     ability_res = [*shuffle_dict({k: v for k, v in self.inventory.items()
                                                   if k in res_types}).items()]
                     if len(ability_res) > 0:
-                        {{inv_opeq('requested_magic', 'ability_res[0][1]', '+', 'k["Strength"]')}}
+                        {{inv_opeq('requested_magic',
+                                   'ability_res[0][1]', '+', 'k["Strength"]')}}
                         print(ability_res[0][0], ability_res[0][1])
             for k in requested_magic.keys():
-                {{inv_opeq('requested_magic', 'k', '-', getinv('self.inventory', 'k'))}}
-                amount = min(requested_magic[k], {{getinv('WorldMap[self.origin]["Structure"].resources', 'k')}})
+                {{inv_opeq('requested_magic', 'k', '-',
+                           getinv('self.inventory', 'k'))}}
+                amount = min(requested_magic[k], {
+                             {getinv('WorldMap[self.origin]["Structure"].resources', 'k')}})
                 if amount > 0:
                     {{inv_opeq('self.inventory', 'k', '+', 'amount')}}
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources', 'k', '-', 'amount')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].resources', 'k', '-', 'amount')}}
             return
 
         # Learning / Studying
@@ -592,8 +633,10 @@ class NPC:
                 study_choices[k] += art_weight
             study_choices["Adventuring"] += WorldMap[self.origin]["Structure"].cultural_values["Might"]
             total_studies = sum(study_choices.values())
-            study_choices = {k: v / total_studies for k, v in study_choices.items()}
-            study = random.choices([*study_choices.keys()], [*study_choices.values()])[0]
+            study_choices = {k: v / total_studies for k,
+                             v in study_choices.items()}
+            study = random.choices(
+                [*study_choices.keys()], [*study_choices.values()])[0]
             idol = 0
             library = WorldMap[self.pos]['Structure'].library
             write = False
@@ -608,26 +651,31 @@ class NPC:
             else:
                 write = True
             difficulty = (self.age ** 2) * {{getinv('self.skills', 'study')}} / 100 / \
-                         max(idol - {{getinv('self.skills', 'study')}}, 10)
+                max(idol - {{getinv('self.skills', 'study')}}, 10)
             luck = random.random()
             if luck / (1 - luck) > difficulty:  # This can be anywhere from 0 to infinity
                 {{inv_opeq('self.skills', 'study', '+', '1')}}
                 if self.skills[study] == 2:
                     self.reputation += 1
-                    self.life.append(LifeEvent(self, current_year, f"began studying {study.lower()}"))
+                    self.life.append(
+                        LifeEvent(self, current_year, f"began studying {study.lower()}"))
                 elif self.skills[study] == 10:
                     self.reputation += 1
-                    self.life.append(LifeEvent(self, current_year, f"became a master in {study.lower()}"))
+                    self.life.append(
+                        LifeEvent(self, current_year, f"became a master in {study.lower()}"))
                 elif self.skills[study] == 20:
                     self.reputation += 1
-                    self.life.append(LifeEvent(self, current_year, f"became an expert in {study.lower()}"))
+                    self.life.append(
+                        LifeEvent(self, current_year, f"became an expert in {study.lower()}"))
                 if write:
                     if study in library.keys():
                         if {{getinv('library[study]', 'str(self.skills[study])')}} < \
                                 {{getinv('self.skills', '"Teaching"')}}:
-                            library[study][str(self.skills[study])] = self.skills["Teaching"]
+                            library[study][str(
+                                self.skills[study])] = self.skills["Teaching"]
                     else:
-                        library[study] = {self.skills[study]: {{getinv('self.skills', '"Teaching"')}}}
+                        library[study] = {self.skills[study]: {
+                            {getinv('self.skills', '"Teaching"')}}}
 
             # Using productive skills
             metalwork_prod = {{getinv('self.skills', '"Metalworking"')}}
@@ -640,9 +688,12 @@ class NPC:
                     current_goods = min(metalwork_prod, math.floor(v))
                     assert current_goods >= 0, f"{self.name} was about to make {current_goods} {k} Goods. Somethin' ain't right. Prod={metalwork_prod}  res={math.floor(v)}"
                     metalwork_prod -= current_goods
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources', 'k', '-', 'current_goods')}}
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources', 'k + " Goods"', '+', 'current_goods')}}
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].production', 'k + " Goods"', '+', 'current_goods')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].resources', 'k', '-', 'current_goods')}}
+                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources',
+                               'k + " Goods"', '+', 'current_goods')}}
+                    {{inv_opeq('WorldMap[self.origin]["Structure"].production',
+                               'k + " Goods"', '+', 'current_goods')}}
                     if metalwork_prod <= 0:
                         break
 
@@ -654,9 +705,12 @@ class NPC:
                     current_goods = min(gemwork_prod, math.floor(v))
                     assert current_goods >= 0, f"{self.name} was about to make {current_goods} Cut {k}. Somethin' ain't right. Prod={gemwork_prod}  res={math.floor(v)}"
                     gemwork_prod -= current_goods
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources', 'k', '-', 'current_goods')}}
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources', '"Cut " + k', '+', 'current_goods')}}
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].production', '"Cut " + k', '+', 'current_goods')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].resources', 'k', '-', 'current_goods')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].resources', '"Cut " + k', '+', 'current_goods')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].production', '"Cut " + k', '+', 'current_goods')}}
                     if gemwork_prod <= 0:
                         break
 
@@ -665,12 +719,16 @@ class NPC:
                 animal_res = shuffle_dict({k: v for k, v in WorldMap[self.pos]['Structure'].resources.items()
                                            if k in Animals.keys()})
                 for k, v in animal_res.items():  # Animal Training
-                    current_goods = min(animal_prod, math.floor(v) / Animals[k][3])
+                    current_goods = min(
+                        animal_prod, math.floor(v) / Animals[k][3])
                     assert current_goods >= 0, f"{self.name} was about to make {current_goods} Tame {k}. Somethin' ain't right. Prod={animal_prod}  res={math.floor(v)}"
                     animal_prod -= current_goods
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources', 'k', '-', 'current_goods')}}
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].resources', '"Tame " + k', '+', 'current_goods')}}
-                    {{inv_opeq('WorldMap[self.origin]["Structure"].production', '"Tame " + k', '+', 'current_goods')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].resources', 'k', '-', 'current_goods')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].resources', '"Tame " + k', '+', 'current_goods')}}
+                    {{inv_opeq(
+                        'WorldMap[self.origin]["Structure"].production', '"Tame " + k', '+', 'current_goods')}}
                     if animal_prod <= 0:
                         break
 
@@ -690,7 +748,8 @@ class NPC:
                                                 if k in res_types})
                     # print(ability_res)
                     for kk, vv in ability_res.items():
-                        current_goods = min(magic_prod, math.floor(vv / k["Strength"]))
+                        current_goods = min(
+                            magic_prod, math.floor(vv / k["Strength"]))
                         assert current_goods >= 0, f"{self.name} was about to perform {current_goods} {['Type']}. Somethin' ain't right. Prod={magic_prod}  res={math.floor(vv / k['Strength'])}"
                         # print(magic_prod, math.floor(vv / k["Strength"]))
                         if k["Type"] == "Portal":
@@ -715,9 +774,11 @@ class NPC:
                                         self.origin, k) not in trade_connections.keys() and (
                                         k, self.origin) not in trade_connections.keys():
                                     trade_connections[(self.origin, k)] = 0
-                                    WorldMap[k]["Structure"].artifacts.remove("Portal")
+                                    WorldMap[k]["Structure"].artifacts.remove(
+                                        "Portal")
                             else:
-                                WorldMap[self.origin]["Structure"].artifacts.append("Portal")
+                                WorldMap[self.origin]["Structure"].artifacts.append(
+                                    "Portal")
                             self.life.append(LifeEvent(self, current_year,
                                                        f"established a portal in {WorldMap[self.origin]['Structure'].name}"))
                         if magic_prod <= 0:
@@ -786,7 +847,8 @@ class Monster:
         if self.species == "Dragon":
             self.desc = f"a great winged reptile with {random.choice(['engraved', 'long', 'sharpened', 'serrated'])} " \
                         f"horns and claws and {mon_color} scales. It " + \
-                        random.choice(['is engraved with symbols', 'has a prominent scar', 'wears bone jewelry'])
+                        random.choice(
+                            ['is engraved with symbols', 'has a prominent scar', 'wears bone jewelry'])
         elif self.species == "Worm":
             self.desc = f"an enormous worm with {mon_color} plating " + \
                         random.choice(
@@ -801,7 +863,8 @@ class Monster:
                        'spider', 'insect', 'lion']
             animal1 = random.choice(animals)
             animal2 = random.choice(animals)
-            animal3 = random.choice(['bird', 'bat', 'snake', 'deer', 'moose', 'scorpion', 'elephant'])
+            animal3 = random.choice(
+                ['bird', 'bat', 'snake', 'deer', 'moose', 'scorpion', 'elephant'])
             part = {'bird': 'wings', 'bat': 'wings', 'snake': 'fangs', 'deer': 'antlers', 'moose': 'antlers',
                     'spider': 'legs', 'scorpion': 'stinger', 'elephant': 'tusks'}[animal3]
             self.desc = f"an oversized {animal1} " \
@@ -828,8 +891,8 @@ class Monster:
         if self.location in CityList:  # Raid a city
             city = WorldMap[self.location]['Structure']
             CityRes = {k: v * (Goods[k][1] if k in Goods.keys() else (
-                    4 * (Goods[{{extract_material('k')}}][1] if {{extract_material('k')}} in Goods.keys() else 1)))
-                       for k, v in sorted(city.resources.items(), key=lambda item: item[1], reverse=True)}
+                4 * (Goods[{{extract_material('k')}}][1] if {{extract_material('k')}} in Goods.keys() else 1)))
+                for k, v in sorted(city.resources.items(), key=lambda item: item[1], reverse=True)}
             # print(city.resources, CityRes)
             # city.history.append(CityEvent(city, current_year, f"was raided by {self.name}"))
             for i in range(min(3, len(CityRes))):
@@ -855,7 +918,8 @@ def blit_txt(txt, x, y, display, text_color=(255, 255, 255), maxlength=0):
         text = txt.split("\n")
         y_ = 0
         for n in range(len(text)):
-            y_ += blit_txt(text[n], x, y + y_ * 20, display, text_color=text_color, maxlength=maxlength)
+            y_ += blit_txt(text[n], x, y + y_ * 20, display,
+                           text_color=text_color, maxlength=maxlength)
         return y_
     if maxlength == 0:
         render = font.render(txt, False, (*text_color, 255))
@@ -893,7 +957,8 @@ def update_screen():
     for k in WorldMap.keys():
         x = k[0] * 10 + 20
         y = k[1] * 10 + 20
-        pygame.draw.rect(Display, Biomes[WorldMap[k]["Terrain"]]["Color"], (x, y, 10, 10))
+        pygame.draw.rect(
+            Display, Biomes[WorldMap[k]["Terrain"]]["Color"], (x, y, 10, 10))
 
     trade_values = [1]
     for k in trade_connections.keys():
@@ -902,14 +967,17 @@ def update_screen():
     for t in trade_connections.keys():
         c1 = (t[0][0] * 10 + 25, t[0][1] * 10 + 25)
         c2 = (t[1][0] * 10 + 25, t[1][1] * 10 + 25)
-        pygame.draw.line(Display, (255, 255, 255), c1, c2, min(math.ceil(trade_connections[t] / trade_average), 5))
+        pygame.draw.line(Display, (255, 255, 255), c1, c2, min(
+            math.ceil(trade_connections[t] / trade_average), 5))
 
-    population_average = sum([1, *(WorldMap[k]["Structure"].population for k in CityList)]) / (len(CityList) + 1)
+    population_average = sum(
+        [1, *(WorldMap[k]["Structure"].population for k in CityList)]) / (len(CityList) + 1)
 
     for k in CityList:
         x = k[0] * 10 + 25
         y = k[1] * 10 + 25
-        population = 0 if population_average == 0 else (WorldMap[k]["Structure"].population / population_average)
+        population = 0 if population_average == 0 else (
+            WorldMap[k]["Structure"].population / population_average)
         if population == 0:
             pygame.draw.circle(Display, (128, 0, 0), (x, y), 3, 1)
         elif population < 0.5:
@@ -919,7 +987,8 @@ def update_screen():
         else:
             pygame.draw.circle(Display, (0, 0, 0), (x, y), 5, 2)
         if k == (m_x, m_y):
-            blit_txt(str(WorldMap[k]["Structure"]), 20, 625, Display, maxlength=65)
+            blit_txt(str(WorldMap[k]["Structure"]),
+                     20, 625, Display, maxlength=65)
 
     RegionDisplay = pygame.Surface((900, 700), flags=pygame.SRCALPHA)
     selected_region = None
@@ -933,7 +1002,8 @@ def update_screen():
         for k in selected_region.tiles:
             x = 10 * k[0] + 20
             y = 10 * k[1] + 20
-            pygame.draw.rect(RegionDisplay, (120, 120, 150, 150), (x, y, 10, 10))
+            pygame.draw.rect(
+                RegionDisplay, (120, 120, 150, 150), (x, y, 10, 10))
         Display.blit(RegionDisplay, (0, 0))
 
     for k in CityList:  # Draw circles for traveling NPCs
@@ -1018,8 +1088,10 @@ def manage_trade(route):
         c2_demand[k] = config["TRADE_VOLUME"] / c2.economy[k]
     c1_keys = list(dict.fromkeys([*c1_demand.keys(), *c2.economy.keys()]))
     c2_keys = list(dict.fromkeys([*c2_demand.keys(), *c1.economy.keys()]))
-    c1_supply = {k: {{getinv('c1_demand', 'k')}} * {{getinv('c2.economy', 'k')}} for k in c1_keys}
-    c2_supply = {k: {{getinv('c2_demand', 'k')}} * {{getinv('c1.economy', 'k')}} for k in c2_keys}
+    c1_supply = {k: {{getinv('c1_demand', 'k')}} *
+                 {{getinv('c2.economy', 'k')}} for k in c1_keys}
+    c2_supply = {k: {{getinv('c2_demand', 'k')}} *
+                 {{getinv('c1.economy', 'k')}} for k in c2_keys}
     # print("Demand")
     # print(c1_demand)
     # print(c2_demand)
@@ -1040,10 +1112,12 @@ def manage_trade(route):
     try:
         c1_min = min(c1_supply.values())
         c1_trade = \
-            [(key, value, math.floor(c1_demand[key])) for key, value in c1_supply.items() if value == c1_min][0]
+            [(key, value, math.floor(c1_demand[key]))
+             for key, value in c1_supply.items() if value == c1_min][0]
         c2_min = min(c2_supply.values())
         c2_trade = \
-            [(key, value, math.floor(c2_demand[key])) for key, value in c2_supply.items() if value == c2_min][0]
+            [(key, value, math.floor(c2_demand[key]))
+             for key, value in c2_supply.items() if value == c2_min][0]
         if c1_trade[1] > (config["TRADE_VOLUME"] - config["TRADE_THRESHOLD"]) or c2_trade[1] > (
                 config["TRADE_VOLUME"] - config["TRADE_THRESHOLD"]) or \
                 {{getinv('c1.resources', 'c2_trade[0]')}} < c2_trade[2] or {{getinv('c2.resources', 'c1_trade[0]')}} < \
@@ -1092,7 +1166,8 @@ def build_region_map(config_=None):
         for k in keys:
             if RegionMap_[k] is not None:
                 continue
-            for n in range(config_["GEN_RADIUS"]):  # Look for adjacent tiles before starting a new Region
+            # Look for adjacent tiles before starting a new Region
+            for n in range(config_["GEN_RADIUS"]):
                 adjacent_terrain = [*(RegionMap_[a] for a in get_adj(k, r=n, bounds=RegionMap_.keys())
                                       if RegionMap_[a] is not None)]
                 if adjacent_terrain:
@@ -1169,7 +1244,8 @@ def generate_cities():
             c2 = CityList[ii]
             d2 = 2 if WorldMap[c2]["Terrain"] == "Mountain" else 1.4 if WorldMap[c2]["Terrain"] == "Desert" else \
                 1.2 if WorldMap[c2]["Terrain"] == "Forest" else 1
-            d = math.sqrt((c1[0] - c2[0]) ** 2 + (c1[1] - c2[1]) ** 2) * d1 * d2
+            d = math.sqrt((c1[0] - c2[0]) ** 2 +
+                          (c1[1] - c2[1]) ** 2) * d1 * d2
             possible_trade_connections[(c1, c2)] = d
     # Find trade connections
     for c in CityList:
@@ -1178,7 +1254,8 @@ def generate_cities():
             if c not in k:
                 continue
             connections[k] = possible_trade_connections[k]
-        connections = {k: v for k, v in sorted(connections.items(), key=lambda item: item[1])}
+        connections = {k: v for k, v in sorted(
+            connections.items(), key=lambda item: item[1])}
         for n in range(min(3, len(connections))):
             t = [*connections.keys()][n]
             if t not in trade_connections.keys():
@@ -1198,12 +1275,15 @@ def generate_magic():
     Magic["Material"][2] = random.choice(["Metal", "Plant", "Gemstone"])
     Magic["Material"][0] = names.generate(Magic["Material"][2])
     if Magic["Material"][2] in ["Metal", "Gemstone"]:
-        Magic["Material"][1] = (1 if Magic['Localization'] == "Ubiquitous" else 6, 2 + r_i, 9)
+        Magic["Material"][1] = (1 if Magic['Localization']
+                                == "Ubiquitous" else 6, 2 + r_i, 9)
     elif Magic["Material"][2] == "Plant":
-        Magic["Material"][1] = ((4 if Magic['Localization'] == "Ubiquitous" else 10) - r_i, 1, 9)
+        Magic["Material"][1] = (
+            (4 if Magic['Localization'] == "Ubiquitous" else 10) - r_i, 1, 9)
     Magic["Name"] = names.generate("Magic")
     yield  # Run the second call after regions are generated
-    if Magic['Localization'] == "Localized":  # Get rid of all of the resource other than one random location
+    # Get rid of all of the resource other than one random location
+    if Magic['Localization'] == "Localized":
         select_regions = [r for r in RegionList if
                           hasattr(r, "resources") and {{getinv('r.resources', 'Magic["Material"][0]')}} > 0]
         cl = CityList.copy()
@@ -1240,7 +1320,8 @@ def generate_magic():
 def set_races():
     randlist = [*range(len(RegionList))]
     random.shuffle(randlist)
-    checklist = {"Human": False, "Elf": False, "Dwarf": False, "Orc": False, "Goblin": False}
+    checklist = {"Human": False, "Elf": False,
+                 "Dwarf": False, "Orc": False, "Goblin": False}
     for r in randlist:  # Seed original three
         if RegionList[r].terrain in ["Plain"]:
             if not checklist["Human"]:
@@ -1298,7 +1379,8 @@ def set_races():
         elif r.terrain == "Mountain":
             weights["Dwarf"] += 1.0
         for w in weights.keys():
-            weights[w] /= {"Human": 70, "Dwarf": 120, "Elf": 1000, "Goblin": 25, "Orc": 50}[w]
+            weights[w] /= {"Human": 70, "Dwarf": 120,
+                           "Elf": 1000, "Goblin": 25, "Orc": 50}[w]
         total = sum(weights.values())
         for w in weights.keys():
             weights[w] /= total
