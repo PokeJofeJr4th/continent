@@ -605,20 +605,26 @@ impl World {
 
 #[derive(Parser, Debug)]
 struct Args {
-    // duration to run (default 1000)
+    /// List files
+    #[clap(short, long)]
+    list: bool,
+
+    /// Duration in years
     #[arg(short, long, default_value_t = 1000)]
     duration: u32,
 
-    // load from file (default don't)
+    /// File to load from
     #[arg(short, long)]
-    path: String,
+    path: Option<String>,
 
-    // save to file (default foo.json)
+    /// File to save to
     #[arg(short, long)]
-    save: String,
+    save: Option<String>,
 }
 
 fn main() {
+    let args: Args = Args::parse();
+
     let mut rng = thread_rng();
 
     macro_rules! markov_data {
@@ -641,14 +647,12 @@ fn main() {
         markov_data_plant from "markov/plant.mkv"
     }
 
-    let args: Args = Args::parse();
-
     let year_delimiter: u32 = (args.duration / 100).max(1);
 
     let mut world = {
-        fs::read_to_string(args.path).map_or(None, |contents| {
-            json::parse(&contents).map_or(None, |jsonvalue| {
-                World::s_dejsonize(&jsonvalue)
+        args.path.and_then(|path| {
+            fs::read_to_string(path).map_or(None, |contents| {
+                json::parse(&contents).map_or(None, |jsonvalue| World::s_dejsonize(&jsonvalue))
             })
         })
     }
@@ -798,7 +802,8 @@ fn main() {
         }
         world.tick(&mut rng, &markov_data_name);
     }
-    fs::write(args.save, world.s_jsonize().dump()).expect("Unable to write file");
+    args.save
+        .map(|save| fs::write(save, world.s_jsonize().dump()).expect("Unable to write file"));
 }
 
 fn build_region_map(
