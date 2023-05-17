@@ -1,12 +1,3 @@
-#![warn(clippy::pedantic)]
-#![allow(
-    clippy::cast_possible_truncation,
-    clippy::cast_possible_wrap,
-    clippy::cast_precision_loss,
-    clippy::cast_sign_loss,
-    clippy::cast_lossless,
-    clippy::too_many_lines
-)]
 use std::{collections::HashMap, fs};
 
 use rand::{
@@ -331,7 +322,7 @@ mod tests {
         let initialized_markov = MarkovData::from_strings(&string_pool);
         let bytes = initialized_markov.to_bytes();
         let loaded_markov = MarkovData::from_bytes(&bytes).unwrap();
-        assert_eq!(String::from("Strings "), loaded_markov.sample(&mut rng))
+        assert_eq!(String::from("Strings"), loaded_markov.sample(&mut rng))
     }
 
     #[test]

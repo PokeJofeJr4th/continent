@@ -5,7 +5,7 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::cast_lossless,
-    clippy::too_many_lines
+    // clippy::too_many_lines
 )]
 
 use std::cmp::min;
@@ -26,6 +26,8 @@ use mkv::MarkovData;
 
 mod jsonize;
 use jsonize::SuperJsonizable;
+
+mod worldgen;
 
 mod magic;
 
@@ -114,7 +116,7 @@ impl Terrain {
             Self::Forest => vec![Species::Beast],
             Self::Mountain => vec![Species::Dragon],
             Self::Desert => vec![Species::Worm, Species::Dragon],
-            Self::Jungle => vec![Species::Beast],
+            Self::Jungle => vec![Species::Beast, Species::Worm],
         }
     }
 
@@ -268,6 +270,7 @@ pub struct City {
     pos: usize,
     npcs: Vec<Npc>,
     population: i32,
+    homunculi: i32,
     resources: Inventory,
     economy: Inventory,
     resource_gathering: Inventory,
@@ -283,6 +286,7 @@ impl City {
         current_year: u32,
         config: &Config,
         items: &Items,
+        magic: &MagicSystem,
         markov_data_npc: &MarkovData,
     ) {
         // Save data
@@ -304,7 +308,7 @@ impl City {
         for item in 0..items.all.len() {
             let production = {
                 let production = inverse_add(
-                    self.population as f32 * 1.0,
+                    self.population as f32 + self.homunculi as f32,
                     self.resource_gathering.get(item) * config.production_constant,
                 )
                 .floor();
@@ -379,7 +383,7 @@ impl City {
         let mut npcs = std::mem::take(&mut self.npcs);
         let mut living_npcs: Vec<&mut Npc> = npcs.iter_mut().filter(|npc| npc.alive).collect();
         mut_loop!(living_npcs => for npc in list {
-            self.tick_npc(npc, rng, current_year, config, items);
+            self.tick_npc(npc, rng, current_year, config, items, magic);
         });
         if living_npcs.len() < 3 {
             npcs.push(self.generate_npc(rng, current_year, markov_data_npc));
@@ -394,6 +398,7 @@ impl City {
         current_year: u32,
         config: &Config,
         items: &Items,
+        magic: &MagicSystem,
     ) {
         npc.age += 1;
         // Die of old age
@@ -448,59 +453,102 @@ impl City {
 
         // Learning / Studying
         if npc.age > 15 {
-            let study_choices: Vec<u8> = Skill::iter()
-                .map(|skill| *npc.skills.entry(skill).or_insert(0) + 1)
-                .collect();
-            let study_choice = WeightedIndex::new(study_choices)
-                .map_or(None, |res| Skill::iter().nth(res.sample(rng)));
-            if let Some(choice) = study_choice {
-                if {
-                    let luck = rng.gen::<f32>();
-                    luck / (1.0 - luck)
-                } > (npc.age.pow(2) as f32 * npc.skills[&choice] as f32)
-                {
-                    npc.skills.insert(choice, npc.skills[&choice] + 1);
-                    match npc.skills.get(&choice) {
-                        Some(2) => npc.life.push(HistoricalEvent {
-                            time: current_year,
-                            description: String::from("began studying ") + choice.as_ref(),
-                        }),
-                        Some(5) => npc.life.push(HistoricalEvent {
-                            time: current_year,
-                            description: String::from("became an apprentice in ") + choice.as_ref(),
-                        }),
-                        Some(10) => npc.life.push(HistoricalEvent {
-                            time: current_year,
-                            description: String::from("became a master in ") + choice.as_ref(),
-                        }),
-                        _ => {}
-                    }
+            Self::npc_study(rng, npc, current_year);
+            self.npc_work(rng, npc, items);
+            self.npc_magic_work(rng, npc, magic);
+        }
+    }
+
+    fn npc_study(rng: &mut ThreadRng, npc: &mut Npc, current_year: u32) {
+        let study_choices: Vec<u8> = Skill::iter()
+            .map(|skill| *npc.skills.entry(skill).or_insert(0) + 1)
+            .collect();
+        let study_choice = WeightedIndex::new(study_choices)
+            .map_or(None, |res| Skill::iter().nth(res.sample(rng)));
+        if let Some(choice) = study_choice {
+            if {
+                let luck = rng.gen::<f32>();
+                luck / (1.0 - luck)
+            } > (npc.age.pow(2) as f32 * npc.skills[&choice] as f32)
+            {
+                npc.skills.insert(choice, npc.skills[&choice] + 1);
+                match npc.skills.get(&choice) {
+                    Some(2) => npc.life.push(HistoricalEvent {
+                        time: current_year,
+                        description: String::from("began studying ") + choice.as_ref(),
+                    }),
+                    Some(5) => npc.life.push(HistoricalEvent {
+                        time: current_year,
+                        description: String::from("became an apprentice in ") + choice.as_ref(),
+                    }),
+                    Some(10) => npc.life.push(HistoricalEvent {
+                        time: current_year,
+                        description: String::from("became a master in ") + choice.as_ref(),
+                    }),
+                    _ => {}
                 }
             }
+        }
+    }
 
-            macro_rules! produce_goods {
-                ($skill: expr, $material_type: expr, $material: expr => $product: expr) => {
-                    let mut prod = npc.skills[$skill] as f32 * 100.0;
-                    // Test up to 5 different resources
-                    for _ in 1..5 {
-                        if prod < 0.0 {
-                            break;
-                        }
-                        let resource = rng.gen_range(0..$material_type.len());
-                        let res_usize = $material(resource as u8).to_index(items).unwrap();
-                        let quantity =
-                            min(self.resources.get(res_usize) as i64, prod as i64) as f32;
-                        self.resources.add(res_usize, -quantity);
-                        self.resources.add(res_usize, quantity);
-                        self.production.add(res_usize, quantity);
-                        prod -= quantity;
+    fn npc_work(&mut self, rng: &mut ThreadRng, npc: &mut Npc, items: &Items) {
+        macro_rules! produce_goods {
+            ($skill: expr, $material_type: expr, $material: expr => $product: expr) => {
+                let mut prod = npc.skills[$skill] as f32 * 100.0;
+                // Test up to 5 different resources
+                for _ in 1..5 {
+                    if prod < 0.0 {
+                        break;
                     }
-                };
+                    let resource = rng.gen_range(0..$material_type.len());
+                    let resource_usize = $material(resource as u8).to_index(items).unwrap();
+                    let result_usize = $product(resource as u8).to_index(items).unwrap();
+                    let quantity =
+                        min(self.resources.get(resource_usize) as i64, prod as i64) as f32;
+                    self.resources.add(resource_usize, -quantity);
+                    self.resources.add(result_usize, quantity);
+                    self.production.add(result_usize, quantity);
+                    prod -= quantity;
+                }
+            };
+        }
+        produce_goods!(&Skill::Metalworking, items.metals, &Item::Metal => &Item::MetalGood);
+        produce_goods!(&Skill::AnimalTraining, items.animals, &Item::WildAnimal => &Item::Meat);
+        produce_goods!(&Skill::AnimalTraining, items.animals, &Item::WildAnimal => &Item::TameAnimal);
+        produce_goods!(&Skill::Gemcutting, items.gems, &Item::Gem => &Item::CutGem);
+    }
+
+    fn npc_magic_work(&mut self, rng: &mut ThreadRng, npc: &mut Npc, magic: &MagicSystem) {
+        let mut magic_prod = npc.skills[&Skill::Magic] as f32 * 100.0;
+        let magic_types: Vec<&magic::Ability> = magic
+            .abilities
+            .iter()
+            .filter(|ability| {
+                matches!(
+                    ability.ability_type,
+                    magic::AbilityType::Homunculus
+                        | magic::AbilityType::Youth
+                        | magic::AbilityType::Portal
+                ) && npc.skills[&Skill::Magic] > ability.min_level
+            })
+            .collect();
+        for _ in 1..5 {
+            if magic_prod < 0.0 || magic_types.is_empty() {
+                break;
             }
-            produce_goods!(&Skill::Metalworking, items.metals, &Item::Metal => &Item::MetalGood);
-            produce_goods!(&Skill::AnimalTraining, items.animals, &Item::WildAnimal => &Item::Meat);
-            produce_goods!(&Skill::AnimalTraining, items.animals, &Item::WildAnimal => &Item::TameAnimal);
-            produce_goods!(&Skill::Gemcutting, items.gems, &Item::Gem => &Item::CutGem);
+            let &magic_type = magic_types.choose(rng).unwrap();
+            let quantity = min(
+                (self.resources.get(magic.index.unwrap()) / magic_type.strength as f32) as i64,
+                magic_prod as i64,
+            ) as f32;
+            self.resources.add(magic.index.unwrap(), -quantity);
+            match magic_type.ability_type {
+                magic::AbilityType::Homunculus => self.homunculi += quantity as i32,
+                magic::AbilityType::Youth => npc.age -= quantity as u32,
+                magic::AbilityType::Portal => todo!(),
+                magic::AbilityType::Combat => {}
+            }
+            magic_prod -= quantity * magic_type.strength as f32;
         }
     }
 
@@ -584,6 +632,7 @@ impl World {
                 self.current_year,
                 &self.config,
                 &self.items,
+                &self.magic,
                 markov_data_npc,
             );
         }
@@ -639,7 +688,7 @@ fn main() {
 
     markov_data! {
         // markov_data_animal from "markov/animal.mkv",
-        markov_data_gemstone from "markov/gemstone.mkv",
+        markov_data_gem from "markov/gemstone.mkv",
         markov_data_magic from "markov/magic.mkv",
         markov_data_metal from "markov/metal.mkv",
         markov_data_monster from "markov/monster.mkv",
@@ -656,107 +705,16 @@ fn main() {
             })
         })
     }
-    .unwrap_or({
-        let mut all_items = vec![Item::Fish];
-        let mut plants: Vec<ItemType> = ["Apple", "Pumpkin"]
-            .iter()
-            .map(|&s| ItemType {
-                name: String::from(s),
-                rarity: 2,
-                abundance: 4,
-                value: 1,
-                taming: 0,
-            })
-            .collect();
-        let mut metals: Vec<ItemType> = ["Iron", "Gold"]
-            .iter()
-            .map(|&s| ItemType {
-                name: String::from(s),
-                rarity: 4,
-                abundance: 5,
-                value: 4,
-                taming: 0,
-            })
-            .collect();
-        let mut gems: Vec<ItemType> = ["Diamond", "Ruby"]
-            .iter()
-            .map(|&s| ItemType {
-                name: String::from(s),
-                rarity: 8,
-                abundance: 2,
-                value: 6,
-                taming: 0,
-            })
-            .collect();
-        let animals: Vec<ItemType> = ["Deer", "Wolf"]
-            .iter()
-            .map(|&s| ItemType {
-                name: String::from(s),
-                rarity: 5,
-                abundance: 6,
-                value: 2,
-                taming: 4,
-            })
-            .collect();
-        let magic = MagicSystem::gen(
+    .unwrap_or_else(|| {
+        World::gen(
             &mut rng,
             &markov_data_magic,
-            &markov_data_gemstone,
+            &markov_data_gem,
             &markov_data_metal,
             &markov_data_plant,
-        );
-        match &magic.material_type {
-            magic::MaterialType::Plant => plants.push(magic.material.clone()),
-            magic::MaterialType::Gem => gems.push(magic.material.clone()),
-            magic::MaterialType::Metal => metals.push(magic.material.clone()),
-        };
-        for plant in 0..plants.len() {
-            all_items.push(Item::Plant(plant as u8));
-        }
-        for metal in 0..metals.len() {
-            all_items.push(Item::Metal(metal as u8));
-            all_items.push(Item::MetalGood(metal as u8));
-        }
-        for gem in 0..gems.len() {
-            all_items.push(Item::Gem(gem as u8));
-            all_items.push(Item::CutGem(gem as u8));
-        }
-        for animal in 0..animals.len() {
-            all_items.push(Item::WildAnimal(animal as u8));
-            all_items.push(Item::TameAnimal(animal as u8));
-            all_items.push(Item::Meat(animal as u8));
-        }
-        let items = Items {
-            all: all_items,
-            plants,
-            metals,
-            gems,
-            animals,
-        };
-        let config = Config::default();
-        let (region_map, region_list) =
-            build_region_map(&mut rng, &markov_data_monster, &config, &items);
-        let (city_list, trade_connections) = generate_cities(
-            &region_map,
-            &region_list,
-            &mut rng,
+            &markov_data_monster,
             &markov_data_name,
-            &config,
-            &items,
-        );
-        let trade_connections_list: Vec<(usize, usize)> =
-            trade_connections.iter().map(|(&k, _v)| k).collect();
-        World {
-            config,
-            magic,
-            current_year: 0,
-            region_map,
-            region_list,
-            city_list,
-            trade_connections,
-            trade_connections_list,
-            items,
-        }
+        )
     });
 
     for y in 0..world.config.world_size.1 {
@@ -802,326 +760,9 @@ fn main() {
         }
         world.tick(&mut rng, &markov_data_name);
     }
-    args.save
-        .map(|save| fs::write(save, world.s_jsonize().dump()).expect("Unable to write file"));
-}
-
-fn build_region_map(
-    rng: &mut ThreadRng,
-    markov_data_monster: &MarkovData,
-    config: &Config,
-    items: &Items,
-) -> (Vec<usize>, Vec<Region>) {
-    let mut regions = 0;
-    let mut region_map = vec![None; config.world_size.0 * config.world_size.1];
-    for y in 0..config.world_size.1 {
-        region_map[(y * config.world_size.0)] = Some(0);
-        region_map[(config.world_size.0 + y * config.world_size.0 - 1)] = Some(0);
+    if let Some(save) = args.save {
+        fs::write(save, world.s_jsonize().dump()).expect("Unable to write file");
     }
-    for x in 0..config.world_size.0 {
-        region_map[x] = Some(0);
-        region_map[((config.world_size.1 - 1) * config.world_size.0 + x)] = Some(0);
-    }
-    let mut indices: Vec<usize> = (0..(config.world_size.0 * config.world_size.1)).collect();
-    loop {
-        indices.shuffle(rng);
-        for index in indices.clone() {
-            if region_map.get(index).map_or(false, Option::is_some) {
-                indices.remove(
-                    indices
-                        .iter()
-                        .position(|x| *x == index)
-                        .expect("Index somehow gone already??"),
-                );
-                continue;
-            }
-            for n in 0..config.gen_radius {
-                let adj: Vec<usize> = get_adj(index, n, config)
-                    .iter()
-                    .filter_map(|&m| region_map[m])
-                    .collect();
-                if adj.is_empty() {
-                    continue;
-                }
-                region_map[index] = adj.choose(rng).copied();
-                break;
-            }
-            if region_map.get(index).map_or(false, Option::is_none) {
-                regions += 1;
-                region_map[index] = Some(regions);
-                indices.remove(
-                    indices
-                        .iter()
-                        .position(|x| *x == index)
-                        .expect("Index somehow gone already??"),
-                );
-            }
-        }
-        if !indices.iter().any(|&item| region_map[item].is_none()) {
-            break;
-        }
-    }
-    let region_map_fixed: Vec<usize> = region_map.iter().map(|&m| m.unwrap_or(0)).collect();
-    let mut region_list: Vec<Region> = (0..regions)
-        .map(|id| {
-            random_region(
-                id + 1,
-                &region_map_fixed,
-                rng,
-                regions,
-                markov_data_monster,
-                config,
-                items,
-            )
-        })
-        .collect();
-    region_list.insert(0, {
-        let mut base_region = random_region(
-            0,
-            &region_map_fixed,
-            rng,
-            regions,
-            markov_data_monster,
-            config,
-            items,
-        );
-        base_region.terrain = Terrain::Ocean;
-        base_region
-    });
-    (region_map_fixed, region_list)
-}
-
-fn random_region(
-    id: usize,
-    region_map: &[usize],
-    rng: &mut ThreadRng,
-    region_count: usize,
-    markov_data_monster: &MarkovData,
-    config: &Config,
-    items: &Items,
-) -> Region {
-    let tiles: Vec<usize> = (0..(config.world_size.0 * config.world_size.1))
-        .filter(|&i| region_map[i] == id)
-        .collect();
-    let terrain = {
-        let ter_iter = Terrain::iter().collect::<Vec<_>>();
-        let ter = ter_iter.choose(rng);
-        match ter {
-            Some(&terrain) => terrain,
-            None => Terrain::Ocean,
-        }
-    };
-    let resources = {
-        let (metal, gem, plant, animal) = match terrain {
-            Terrain::Plain => (0.2, 0.1, 0.4, 0.9),
-            Terrain::Forest => (0.1, 0.2, 0.9, 0.4),
-            Terrain::Mountain => (0.9, 0.4, 0.2, 0.1),
-            Terrain::Desert => (0.4, 0.9, 0.1, 0.2),
-            Terrain::Jungle => (0.1, 0.4, 0.9, 0.2),
-            Terrain::Ocean => (0.0, 0.0, 0.0, 0.0),
-        };
-
-        let mut resources = Inventory::default(items);
-
-        macro_rules! run_type {
-            ($resource : expr, $resource_item : expr, $resource_names : expr) => {
-                for resource_type in 0..$resource_names.len() {
-                    if rng.gen::<f32>() < $resource {
-                        resources.set(
-                            $resource_item(resource_type as u8).to_index(items).unwrap(),
-                            rng.gen::<f32>().mul_add($resource, 1.0),
-                        );
-                    }
-                }
-            };
-        }
-        run_type!(metal, Item::Metal, items.metals);
-        run_type!(gem, Item::Gem, items.gems);
-        run_type!(plant, Item::Plant, items.plants);
-        run_type!(animal, Item::WildAnimal, items.animals);
-        resources.set(0, rng.gen::<f32>() * 2.0);
-        resources
-    };
-    Region {
-        id,
-        tiles: tiles.clone(),
-        resources,
-        terrain,
-        adjacent_regions: (0..region_count)
-            .filter(|&neighbor_region| {
-                tiles.iter().any(|&tile| {
-                    get_adj(tile, 1, config)
-                        .iter()
-                        .any(|&local_region| local_region == neighbor_region)
-                })
-            })
-            .collect(),
-        monster: {
-            let species = *terrain.monster_types().choose(rng).unwrap();
-            Some(Monster {
-                alive: true,
-                location: *tiles.choose(rng).unwrap(),
-                inventory: Inventory::default(items),
-                species: String::from(species.as_ref()),
-                name: markov_data_monster.sample(rng),
-                desc: {
-                    let color = ["red", "blue", "black", "white", "green", "gray"]
-                        .choose(rng)
-                        .unwrap();
-                    match species {
-                        Species::Leviathan => format!(
-                            "a giant sea creature with {} tentacles, a {}, and {}, {} skin",
-                            ((3..=8).choose(rng).unwrap()) * 2,
-                            ["chitinous beak", "toothy maw"].choose(rng).unwrap(),
-                            ["slimy", "smooth", "rough", "bumpy"].choose(rng).unwrap(),
-                            color
-                        ),
-                        Species::Dragon => format!(
-                            "a great winged reptile with {} horns and claws and {} scales. It {}",
-                            ["engraved", "long", "sharpened", "serrated"]
-                                .choose(rng)
-                                .unwrap(),
-                            color,
-                            [
-                                "is adorned with arcane sigils",
-                                "wears bone jewelry",
-                                "has a prominent scar"
-                            ]
-                            .choose(rng)
-                            .unwrap()
-                        ),
-                        Species::Beast => {
-                            let (species1, species2) = {
-                                let mut slice = [
-                                    "bear", "beaver", "gorilla", "coyote", "wolf", "bird", "deer",
-                                    "owl", "lizard", "moose", "spider", "insect", "lion",
-                                ]
-                                .choose_multiple(rng, 2);
-                                (slice.next().unwrap(), slice.next().unwrap())
-                            };
-                            let (species, part): &(&str, &str) = [
-                                ("bird", "wings"),
-                                ("bat", "wings"),
-                                ("snake", "fangs"),
-                                ("deer", "antlers"),
-                                ("moose", "antlers"),
-                                ("spider", "legs"),
-                                ("scorpion", "stinger"),
-                                ("elephant", "tusks"),
-                            ]
-                            .choose(rng)
-                            .unwrap();
-                            format!(
-                                "an oversized {} {} the {} of a {}",
-                                species1,
-                                {
-                                    if species1 == species2 {
-                                        String::from("with")
-                                    } else {
-                                        format!("with the head of a {species2} and")
-                                    }
-                                },
-                                part,
-                                species
-                            )
-                        }
-                        Species::Worm => format!(
-                            "an enormous worm with {} plating {}",
-                            color,
-                            [
-                                "engraved with symbols",
-                                "covered in spikes",
-                                "and a fleshy sail along its spine"
-                            ]
-                            .choose(rng)
-                            .unwrap()
-                        ),
-                    }
-                },
-            })
-        },
-    }
-}
-
-fn generate_cities(
-    region_map: &[usize],
-    region_list: &[Region],
-    rng: &mut ThreadRng,
-    markov_data: &mkv::MarkovData,
-    config: &Config,
-    items: &Items,
-) -> (HashMap<usize, City>, HashMap<(usize, usize), i32>) {
-    let mut possible_cities = Vec::new();
-    for x in 0..region_map.len() {
-        if region_list[region_map[x]].terrain == Terrain::Ocean {
-            continue;
-        }
-        if get_adj(x, 1, config)
-            .iter()
-            .any(|&m| region_list[region_map[m]].terrain == Terrain::Ocean)
-        {
-            if rng.gen::<f32>() > config.coastal_city_density {
-                continue;
-            }
-        } else if rng.gen::<f32>() > config.inland_city_density {
-            continue;
-        }
-        possible_cities.push(x);
-    }
-    let mut actual_cities = Vec::new();
-    possible_cities.shuffle(rng);
-    for x in possible_cities {
-        // Discard a city if there's already a city adjacent to it
-        if get_adj(x, 1, config)
-            .iter()
-            .any(|&x| actual_cities.iter().any(|&c| x == c))
-        {
-            continue;
-        }
-        actual_cities.push(x);
-    }
-    return (
-        actual_cities
-            .iter()
-            .map(|&pos| {
-                (
-                    pos,
-                    City {
-                        pos,
-                        name: markov_data.sample(rng),
-                        npcs: Vec::new(),
-                        population: 100,
-                        resources: Inventory::default(items),
-                        economy: Inventory::default(items),
-                        resource_gathering: Inventory(
-                            region_list[region_map[pos]]
-                                .resources
-                                .iter()
-                                .enumerate()
-                                .map(|(_, &val)| rng.gen::<f32>().mul_add(0.1, val))
-                                .collect(),
-                        ),
-                        data: HashMap::new(),
-                        imports: Inventory::default(items),
-                        production: Inventory::default(items),
-                    },
-                )
-            })
-            .collect(),
-        {
-            // Trade Connections
-            let mut trade_connections: HashMap<(usize, usize), i32> = HashMap::new();
-            for &start in &actual_cities {
-                trade_connections.extend(
-                    actual_cities
-                        .iter()
-                        .filter(|&&end| end > start && distance(end, start, config) < 5.0)
-                        .map(|&end| ((start, end), 0)),
-                );
-            }
-            trade_connections
-        },
-    );
 }
 
 fn handle_trade(

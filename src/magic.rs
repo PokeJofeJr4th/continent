@@ -33,7 +33,7 @@ impl Ability {
             AbilityType::Combat => Self {
                 ability_type,
                 strength: rng.gen_range(2..6),
-                min_level: 2,
+                min_level: rng.gen_range(1..3),
             },
             AbilityType::Homunculus => Self {
                 ability_type,
@@ -48,17 +48,19 @@ impl Ability {
             AbilityType::Youth => Self {
                 ability_type,
                 strength: rng.gen_range(2..6),
-                min_level: 2,
+                min_level: rng.gen_range(3..8),
             },
         }
     }
 }
 
+#[allow(clippy::module_name_repetitions)]
 pub struct MagicSystem {
     pub material: ItemType,
     pub material_type: MaterialType,
     pub name: String,
     pub abilities: Vec<Ability>,
+    pub index: Option<usize>,
 }
 
 impl MagicSystem {
@@ -72,6 +74,7 @@ impl MagicSystem {
         let material_type = MaterialType::iter().choose(rng).unwrap();
         let material_rarity = rng.gen_range(6..10);
         Self {
+            index: None,
             material_type,
             material: ItemType {
                 name: match material_type {

@@ -1,3 +1,4 @@
+#[allow(clippy::wildcard_imports)]
 use crate::{
     magic::{Ability, AbilityType, MagicSystem, MaterialType},
     *,
@@ -403,7 +404,7 @@ impl Jsonizable for City {
             pos: usize_to_vec(self.pos, config),
             name: self.name.clone(),
             population: self.population,
-            homunculi: 0,
+            homunculi: self.homunculi,
             NPCs: self.npcs.jsonize(config, items),
             data: self.data.jsonize(config, items),
             imports: self.imports.jsonize(config, items),
@@ -429,6 +430,7 @@ impl Jsonizable for City {
             pos: json_array_to_usize(object.get("pos")?, config)?,
             npcs: Vec::<Npc>::dejsonize(object.get("NPCs")?, config, items)?,
             population: json_int(object.get("population")?)?,
+            homunculi: json_int(object.get("homunculi")?)?,
             resources: Inventory::dejsonize(object.get("resources")?, config, items)?,
             economy: Inventory::dejsonize(object.get("economy")?, config, items)?,
             resource_gathering: Inventory::dejsonize(
@@ -578,14 +580,15 @@ impl Jsonizable for MagicSystem {
         let Some(JsonValue::Array(numbers)) = arr.get(1) else {
                     return None
                 };
+        let material = ItemType {
+            name: json_string(arr.get(0)?)?,
+            rarity: json_int(numbers.get(0)?)? as u8,
+            abundance: json_int(numbers.get(1)?)? as u8,
+            value: json_int(numbers.get(2)?)? as u8,
+            taming: 0,
+        };
         Some(Self {
-            material: ItemType {
-                name: json_string(arr.get(0)?)?,
-                rarity: json_int(numbers.get(0)?)? as u8,
-                abundance: json_int(numbers.get(1)?)? as u8,
-                value: json_int(numbers.get(2)?)? as u8,
-                taming: 0,
-            },
+            material: material.clone(),
             material_type: match json_string(arr.get(2)?)?.as_ref() {
                 "Gem" => MaterialType::Gem,
                 "Metal" => MaterialType::Metal,
@@ -594,6 +597,12 @@ impl Jsonizable for MagicSystem {
             },
             name: json_string(object.get("Name")?)?,
             abilities: Vec::<Ability>::dejsonize(object.get("Abilities")?, config, items)?,
+            index: items.all.iter().position(|item| match item {
+                Item::Plant(plant) => items.plants[*plant as usize].name == material.name,
+                Item::Metal(metal) => items.metals[*metal as usize].name == material.name,
+                Item::Gem(gem) => items.gems[*gem as usize].name == material.name,
+                _ => false,
+            }),
         })
     }
 }
