@@ -5,7 +5,6 @@
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
     clippy::cast_lossless,
-    // clippy::too_many_lines
 )]
 
 use std::cmp::min;
@@ -612,6 +611,40 @@ pub struct Items {
     animals: Vec<ItemType>,
 }
 
+impl Items {
+    fn from_item_types(
+        plants: Vec<ItemType>,
+        metals: Vec<ItemType>,
+        gems: Vec<ItemType>,
+        animals: Vec<ItemType>,
+    ) -> Self {
+        let mut all_items: Vec<Item> = vec![Item::Fish];
+        for plant in 0..plants.len() {
+            all_items.push(Item::Plant(plant as u8));
+        }
+        for metal in 0..metals.len() {
+            all_items.push(Item::Metal(metal as u8));
+            all_items.push(Item::MetalGood(metal as u8));
+        }
+        for gem in 0..gems.len() {
+            all_items.push(Item::Gem(gem as u8));
+            all_items.push(Item::CutGem(gem as u8));
+        }
+        for animal in 0..animals.len() {
+            all_items.push(Item::WildAnimal(animal as u8));
+            all_items.push(Item::TameAnimal(animal as u8));
+            all_items.push(Item::Meat(animal as u8));
+        }
+        Self {
+            all: all_items,
+            plants,
+            metals,
+            gems,
+            animals,
+        }
+    }
+}
+
 pub struct World {
     config: Config,
     current_year: u32,
@@ -650,6 +683,12 @@ impl World {
         }
         self.current_year += 1;
     }
+}
+
+struct WorldGen {
+    config: Config,
+    items: Items,
+    items_src: Vec<String>,
 }
 
 #[derive(Parser, Debug)]

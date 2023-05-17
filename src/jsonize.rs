@@ -102,16 +102,14 @@ impl<T: Jsonizable> Jsonizable for HashMap<String, T> {
     }
 
     fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        match src {
-            JsonValue::Object(object) => {
-                let mut res = Self::new();
-                for (key, value) in object.iter() {
-                    res.insert(String::from(key), T::dejsonize(value, config, items)?);
-                }
-                Some(res)
-            }
-            _ => None,
+        let JsonValue::Object(object) = src else {
+            return None
+        };
+        let mut res = Self::new();
+        for (key, value) in object.iter() {
+            res.insert(String::from(key), T::dejsonize(value, config, items)?);
         }
+        Some(res)
     }
 }
 
@@ -167,63 +165,75 @@ impl SuperJsonizable for Items {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        if let JsonValue::Object(object) = src {
-            macro_rules! item_type {
-                ($key: expr) => {
-                    match object.get("Plants") {
-                        Some(JsonValue::Object(obj)) => obj
-                            .iter()
-                            .filter_map(|(name, values)| match values {
-                                JsonValue::Array(arr) => Some(ItemType {
-                                    name: String::from(name),
-                                    rarity: json_int(arr.get(0)?)? as u8,
-                                    abundance: json_int(arr.get(1)?)? as u8,
-                                    value: json_int(arr.get(2)?)? as u8,
-                                    taming: arr
-                                        .get(3)
-                                        .map_or(0, |jsonvalue| json_int(jsonvalue).unwrap_or(0))
-                                        as u8,
-                                }),
-                                _ => None,
-                            })
-                            .collect(),
-                        _ => return None,
-                    }
-                };
-            }
-
-            let plants: Vec<ItemType> = item_type!("Plants");
-            let metals: Vec<ItemType> = item_type!("Metals");
-            let gems: Vec<ItemType> = item_type!("Gems");
-            let animals: Vec<ItemType> = item_type!("Animals");
-
-            let mut all_items: Vec<Item> = vec![Item::Fish];
-            for plant in 0..plants.len() {
-                all_items.push(Item::Plant(plant as u8));
-            }
-            for metal in 0..metals.len() {
-                all_items.push(Item::Metal(metal as u8));
-                all_items.push(Item::MetalGood(metal as u8));
-            }
-            for gem in 0..gems.len() {
-                all_items.push(Item::Gem(gem as u8));
-                all_items.push(Item::CutGem(gem as u8));
-            }
-            for animal in 0..animals.len() {
-                all_items.push(Item::WildAnimal(animal as u8));
-                all_items.push(Item::TameAnimal(animal as u8));
-                all_items.push(Item::Meat(animal as u8));
-            }
-            Some(Self {
-                all: all_items,
-                plants,
-                metals,
-                gems,
-                animals,
-            })
-        } else {
-            None
+        let JsonValue::Object(object) = src else { return None };
+        macro_rules! item_type {
+            ($key: expr) => {
+                match object.get("Plants") {
+                    Some(JsonValue::Object(obj)) => obj
+                        .iter()
+                        .filter_map(|(name, values)| match values {
+                            JsonValue::Array(arr) => Some(ItemType {
+                                name: String::from(name),
+                                rarity: json_int(arr.get(0)?)? as u8,
+                                abundance: json_int(arr.get(1)?)? as u8,
+                                value: json_int(arr.get(2)?)? as u8,
+                                taming: arr
+                                    .get(3)
+                                    .map_or(0, |jsonvalue| json_int(jsonvalue).unwrap_or(0))
+                                    as u8,
+                            }),
+                            _ => None,
+                        })
+                        .collect(),
+                    _ => return None,
+                }
+            };
         }
+
+        Some(Self::from_item_types(
+            item_type!("Plants"),
+            item_type!("Metals"),
+            item_type!("Gems"),
+            item_type!("Animals"),
+        ))
+    }
+}
+
+impl Items {
+    fn from_txt(txt: &str) -> Option<Self> {
+        let lines = txt.split('\n').collect::<Vec<&str>>();
+        let chunks = lines.chunks_exact(2);
+        let mut plants = Vec::new();
+        let mut metals = Vec::new();
+        let mut gems = Vec::new();
+        let mut animals = Vec::new();
+        for chunk in chunks {
+            let [t, name] = chunk[0].split(':').collect::<Vec<&str>>()[..] else {
+                return None
+            };
+            let numerical_values = chunk[1]
+                .split(',')
+                .map(str::parse::<u8>)
+                .filter_map(Result::ok)
+                .collect::<Vec<u8>>();
+            let [rarity, abundance, value] = numerical_values[..] else { return None };
+            let &taming = numerical_values.get(3).unwrap_or(&0);
+            match t {
+                "animal" => &mut animals,
+                "plant" => &mut plants,
+                "metal" => &mut metals,
+                "gem" => &mut gems,
+                _ => return None,
+            }
+            .push(ItemType {
+                name: String::from(name),
+                rarity,
+                abundance,
+                value,
+                taming,
+            });
+        }
+        Some(Self::from_item_types(plants, metals, gems, animals))
     }
 }
 
@@ -689,5 +699,33 @@ impl SuperJsonizable for World {
             items,
             region_map,
         })
+    }
+}
+
+impl SuperJsonizable for WorldGen {
+    fn s_jsonize(&self) -> JsonValue {
+        json::object! {
+            file_type: "gen",
+            Biomes: {
+                Desert: Terrain::Desert.jsonize(&self.config, &self.items),
+                Forest: Terrain::Forest.jsonize(&self.config, &self.items),
+                Jungle: Terrain::Jungle.jsonize(&self.config, &self.items),
+                Mountain: Terrain::Mountain.jsonize(&self.config, &self.items),
+                Ocean: Terrain::Ocean.jsonize(&self.config, &self.items),
+                Plain: Terrain::Plain.jsonize(&self.config, &self.items)},
+            config: self.config.s_jsonize(),
+            items: self.items_src.clone()
+        }
+    }
+
+    fn s_dejsonize(src: &JsonValue) -> Option<Self> {
+        let JsonValue::Object(object) = src else {
+            return None
+        };
+        let JsonValue::Array(items_src) = object.get("items")? else {
+            return None
+        };
+        let items_src: Vec<String> = items_src.iter().filter_map(json_string).collect();
+        None
     }
 }

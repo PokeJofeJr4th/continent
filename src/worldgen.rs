@@ -11,7 +11,6 @@ impl World {
         markov_monster: &MarkovData,
         markov_name: &MarkovData,
     ) -> Self {
-        let mut all_items = vec![Item::Fish];
         let mut plants: Vec<ItemType> = ["Apple", "Pumpkin"]
             .iter()
             .map(|&s| ItemType {
@@ -58,29 +57,7 @@ impl World {
             magic::MaterialType::Gem => gems.push(magic.material.clone()),
             magic::MaterialType::Metal => metals.push(magic.material.clone()),
         };
-        for plant in 0..plants.len() {
-            all_items.push(Item::Plant(plant as u8));
-        }
-        for metal in 0..metals.len() {
-            all_items.push(Item::Metal(metal as u8));
-            all_items.push(Item::MetalGood(metal as u8));
-        }
-        for gem in 0..gems.len() {
-            all_items.push(Item::Gem(gem as u8));
-            all_items.push(Item::CutGem(gem as u8));
-        }
-        for animal in 0..animals.len() {
-            all_items.push(Item::WildAnimal(animal as u8));
-            all_items.push(Item::TameAnimal(animal as u8));
-            all_items.push(Item::Meat(animal as u8));
-        }
-        let items = Items {
-            all: all_items,
-            plants,
-            metals,
-            gems,
-            animals,
-        };
+        let items = Items::from_item_types(plants, metals, gems, animals);
         let config = Config::default();
         let (region_map, region_list) = build_region_map(rng, markov_monster, &config, &items);
         let (city_list, trade_connections) =
