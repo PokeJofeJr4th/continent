@@ -3,6 +3,7 @@ use crate::{
     magic::{Ability, AbilityType, MagicSystem, MaterialType},
     *,
 };
+use std::fs;
 
 fn json_array_to_usize(arr: &JsonValue, config: &Config) -> Option<usize> {
     match arr {
@@ -201,6 +202,7 @@ impl SuperJsonizable for Items {
 
 impl Items {
     fn from_txt(txt: &str) -> Option<Self> {
+        // println!("items from txt: {txt}");
         let lines = txt.split('\n').collect::<Vec<&str>>();
         let chunks = lines.chunks_exact(2);
         let mut plants = Vec::new();
@@ -216,7 +218,9 @@ impl Items {
                 .map(str::parse::<u8>)
                 .filter_map(Result::ok)
                 .collect::<Vec<u8>>();
-            let [rarity, abundance, value] = numerical_values[..] else { return None };
+            let &rarity = numerical_values.get(0)?;
+            let &abundance = numerical_values.get(1)?;
+            let &value = numerical_values.get(2)?;
             let &taming = numerical_values.get(3).unwrap_or(&0);
             match t {
                 "animal" => &mut animals,
@@ -474,7 +478,7 @@ impl SuperJsonizable for Config {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        // println!("dj config");
+        println!("dj config");
         match src {
             JsonValue::Object(object) => Some(Self {
                 gen_radius: json_int(object.get("GEN_RADIUS")?)? as usize,
@@ -702,6 +706,23 @@ impl SuperJsonizable for World {
     }
 }
 
+impl World {
+    pub fn from_file(
+        src: &JsonValue,
+        rng: &mut ThreadRng,
+        markov: &MarkovCollection,
+    ) -> Option<Self> {
+        let JsonValue::Object(object) = src else {
+            return None
+        };
+        match json_string(object.get("file_type")?)?.as_str() {
+            "gen" => Some(WorldGen::s_dejsonize(src)?.sample(rng, markov)),
+            "save" => Self::s_dejsonize(src),
+            _ => None,
+        }
+    }
+}
+
 impl SuperJsonizable for WorldGen {
     fn s_jsonize(&self) -> JsonValue {
         json::object! {
@@ -713,19 +734,35 @@ impl SuperJsonizable for WorldGen {
                 Mountain: Terrain::Mountain.jsonize(&self.config, &self.items),
                 Ocean: Terrain::Ocean.jsonize(&self.config, &self.items),
                 Plain: Terrain::Plain.jsonize(&self.config, &self.items)},
-            config: self.config.s_jsonize(),
-            items: self.items_src.clone()
+            Config: self.config.s_jsonize(),
+            Items: self.items_src.clone()
         }
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
+        // println!("dj worldgen");
         let JsonValue::Object(object) = src else {
             return None
         };
-        let JsonValue::Array(items_src) = object.get("items")? else {
+        let Some(JsonValue::Array(items_src)) = object.get("Items") else {
             return None
         };
-        let items_src: Vec<String> = items_src.iter().filter_map(json_string).collect();
-        None
+        let items_strings: Vec<String> = items_src.iter().filter_map(json_string).collect();
+        let items_str: String = items_strings
+            .iter()
+            // read the corresponding file
+            .map(|file| fs::read_to_string(format!("objects/{file}.txt")))
+            // filter out failures
+            .filter_map(Result::ok)
+            // merge the contents together
+            .fold(String::new(), |acc, item| item + "\n" + &acc)
+            // get rid of pesky carriage returns
+            .replace('\r', "");
+        let items = Items::from_txt(&items_str)?;
+        Some(Self {
+            config: Config::s_dejsonize(object.get("Config")?)?,
+            items,
+            items_src: items_strings,
+        })
     }
 }

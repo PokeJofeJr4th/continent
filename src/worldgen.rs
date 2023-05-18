@@ -2,15 +2,7 @@
 use crate::*;
 
 impl World {
-    pub fn gen(
-        rng: &mut ThreadRng,
-        markov_magic: &MarkovData,
-        markov_gem: &MarkovData,
-        markov_metal: &MarkovData,
-        markov_plant: &MarkovData,
-        markov_monster: &MarkovData,
-        markov_name: &MarkovData,
-    ) -> Self {
+    pub fn gen(rng: &mut ThreadRng, markov: &MarkovCollection) -> Self {
         let mut plants: Vec<ItemType> = ["Apple", "Pumpkin"]
             .iter()
             .map(|&s| ItemType {
@@ -51,7 +43,7 @@ impl World {
                 taming: 4,
             })
             .collect();
-        let magic = MagicSystem::gen(rng, markov_magic, markov_gem, markov_metal, markov_plant);
+        let magic = MagicSystem::gen(rng, markov);
         match &magic.material_type {
             magic::MaterialType::Plant => plants.push(magic.material.clone()),
             magic::MaterialType::Gem => gems.push(magic.material.clone()),
@@ -59,9 +51,15 @@ impl World {
         };
         let items = Items::from_item_types(plants, metals, gems, animals);
         let config = Config::default();
-        let (region_map, region_list) = build_region_map(rng, markov_monster, &config, &items);
-        let (city_list, trade_connections) =
-            generate_cities(&region_map, &region_list, rng, markov_name, &config, &items);
+        let (region_map, region_list) = build_region_map(rng, &markov.monster, &config, &items);
+        let (city_list, trade_connections) = generate_cities(
+            &region_map,
+            &region_list,
+            rng,
+            &markov.name,
+            &config,
+            &items,
+        );
         let trade_connections_list: Vec<(usize, usize)> =
             trade_connections.iter().map(|(&k, _v)| k).collect();
         Self {
@@ -74,6 +72,49 @@ impl World {
             trade_connections,
             trade_connections_list,
             items,
+        }
+    }
+}
+
+impl WorldGen {
+    pub fn sample(&self, rng: &mut ThreadRng, markov: &MarkovCollection) -> World {
+        let magic = MagicSystem::gen(rng, markov);
+        let Items {
+            all: _,
+            mut plants,
+            mut metals,
+            mut gems,
+            animals,
+        } = self.items.clone();
+        match &magic.material_type {
+            magic::MaterialType::Plant => &mut plants,
+            magic::MaterialType::Gem => &mut gems,
+            magic::MaterialType::Metal => &mut metals,
+        }
+        .push(magic.material.clone());
+        let items = Items::from_item_types(plants, metals, gems, animals);
+        let (region_map, region_list) =
+            build_region_map(rng, &markov.monster, &self.config, &items);
+        let (city_list, trade_connections) = generate_cities(
+            &region_map,
+            &region_list,
+            rng,
+            &markov.name,
+            &self.config,
+            &items,
+        );
+        let trade_connections_list: Vec<(usize, usize)> =
+            trade_connections.iter().map(|(&k, _v)| k).collect();
+        World {
+            config: self.config,
+            current_year: 0,
+            region_map,
+            region_list,
+            city_list,
+            trade_connections,
+            trade_connections_list,
+            items,
+            magic,
         }
     }
 }
@@ -337,7 +378,7 @@ fn generate_cities(
     region_map: &[usize],
     region_list: &[Region],
     rng: &mut ThreadRng,
-    markov_data: &mkv::MarkovData,
+    markov_data: &MarkovData,
     config: &Config,
     items: &Items,
 ) -> (HashMap<usize, City>, HashMap<(usize, usize), i32>) {

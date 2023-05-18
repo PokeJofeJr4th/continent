@@ -5,4 +5,4 @@ gem:Ruby
 plant:Grape
 10,1,2
 metal:Brass
-2.5,2.5,2.5
+2,3,2

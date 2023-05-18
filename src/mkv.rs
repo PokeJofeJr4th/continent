@@ -11,6 +11,17 @@ pub struct MarkovData {
     map: HashMap<(char, char), (Vec<char>, Vec<u32>, WeightedIndex<u32>)>,
 }
 
+#[allow(dead_code)]
+pub struct MarkovCollection {
+    // pub animal: MarkovData,
+    pub gem: MarkovData,
+    pub magic: MarkovData,
+    pub metal: MarkovData,
+    pub monster: MarkovData,
+    pub name: MarkovData,
+    pub plant: MarkovData,
+}
+
 // for some reason it thinks this is dead even though it isn't
 #[allow(dead_code)]
 impl MarkovData {

@@ -4,7 +4,7 @@
     clippy::cast_possible_wrap,
     clippy::cast_precision_loss,
     clippy::cast_sign_loss,
-    clippy::cast_lossless,
+    clippy::cast_lossless
 )]
 
 use std::cmp::min;
@@ -21,7 +21,7 @@ use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 mod mkv;
-use mkv::MarkovData;
+use mkv::{MarkovCollection, MarkovData};
 
 mod jsonize;
 use jsonize::SuperJsonizable;
@@ -603,6 +603,7 @@ impl Default for Config {
     }
 }
 
+#[derive(Clone)]
 pub struct Items {
     all: Vec<Item>,
     plants: Vec<ItemType>,
@@ -715,46 +716,45 @@ fn main() {
 
     let mut rng = thread_rng();
 
-    macro_rules! markov_data {
+    macro_rules! mkv {
         {$($markov_data: ident from $path: expr),*} => {
             $(
                 let mut buf = Vec::new();
                 let mut f = File::open($path).unwrap();
                 f.read_to_end(&mut buf).unwrap();
-                let $markov_data = MarkovData::from_bytes(&buf).unwrap();)*
-            };
-        }
+                let $markov_data = MarkovData::from_bytes(&buf).unwrap();
+            )*
+        };
 
-    markov_data! {
-        // markov_data_animal from "markov/animal.mkv",
-        markov_data_gem from "markov/gemstone.mkv",
-        markov_data_magic from "markov/magic.mkv",
-        markov_data_metal from "markov/metal.mkv",
-        markov_data_monster from "markov/monster.mkv",
-        markov_data_name from "markov/name.mkv",
-        markov_data_plant from "markov/plant.mkv"
+        {$path: expr} => {{
+                let mut buf = Vec::new();
+                let mut f = File::open(format!("markov/{}.mkv", $path)).unwrap();
+                f.read_to_end(&mut buf).unwrap();
+                MarkovData::from_bytes(&buf).unwrap()
+            }
+        }
     }
+
+    let mkv: mkv::MarkovCollection = mkv::MarkovCollection {
+        gem: mkv!("gemstone"),
+        magic: mkv!("magic"),
+        metal: mkv!("metal"),
+        monster: mkv!("monster"),
+        name: mkv!("name"),
+        plant: mkv!("plant"),
+    };
 
     let year_delimiter: u32 = (args.duration / 100).max(1);
 
     let mut world = {
         args.path.and_then(|path| {
             fs::read_to_string(path).map_or(None, |contents| {
-                json::parse(&contents).map_or(None, |jsonvalue| World::s_dejsonize(&jsonvalue))
+                json::parse(&contents).map_or(None, |jsonvalue| {
+                    World::from_file(&jsonvalue, &mut rng, &mkv)
+                })
             })
         })
-    }
-    .unwrap_or_else(|| {
-        World::gen(
-            &mut rng,
-            &markov_data_magic,
-            &markov_data_gem,
-            &markov_data_metal,
-            &markov_data_plant,
-            &markov_data_monster,
-            &markov_data_name,
-        )
-    });
+    }.unwrap();
 
     for y in 0..world.config.world_size.1 {
         for x in 0..world.config.world_size.0 {
@@ -797,7 +797,7 @@ fn main() {
             print!("\x1b[32m\x1b[C█\x1b[D\x1b[0m");
             std::io::stdout().flush().unwrap();
         }
-        world.tick(&mut rng, &markov_data_name);
+        world.tick(&mut rng, &mkv.name);
     }
     if let Some(save) = args.save {
         fs::write(save, world.s_jsonize().dump()).expect("Unable to write file");

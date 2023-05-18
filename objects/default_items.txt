@@ -67,7 +67,7 @@ metal:Platinum
 metal:Bronze
 1,1,2
 metal:Brass
-2.5,2.5,2.5
+2,3,2
 metal:Nickel
 3,3,3
 metal:Lead

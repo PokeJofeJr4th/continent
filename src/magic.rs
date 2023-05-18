@@ -2,7 +2,7 @@ use rand::{rngs::ThreadRng, seq::IteratorRandom, Rng};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 
-use crate::{mkv::MarkovData, ItemType};
+use crate::{mkv::MarkovCollection, ItemType};
 
 #[derive(EnumIter, Debug, PartialEq, Eq, Clone, Copy, AsRefStr)]
 pub enum MaterialType {
@@ -64,13 +64,7 @@ pub struct MagicSystem {
 }
 
 impl MagicSystem {
-    pub fn gen(
-        rng: &mut ThreadRng,
-        markov_magic: &MarkovData,
-        markov_gem: &MarkovData,
-        markov_metal: &MarkovData,
-        markov_plant: &MarkovData,
-    ) -> Self {
+    pub fn gen(rng: &mut ThreadRng, markov: &MarkovCollection) -> Self {
         let material_type = MaterialType::iter().choose(rng).unwrap();
         let material_rarity = rng.gen_range(6..10);
         Self {
@@ -78,9 +72,9 @@ impl MagicSystem {
             material_type,
             material: ItemType {
                 name: match material_type {
-                    MaterialType::Plant => markov_plant,
-                    MaterialType::Gem => markov_gem,
-                    MaterialType::Metal => markov_metal,
+                    MaterialType::Plant => &markov.plant,
+                    MaterialType::Gem => &markov.gem,
+                    MaterialType::Metal => &markov.metal,
                 }
                 .sample(rng),
                 rarity: material_rarity,
@@ -88,7 +82,7 @@ impl MagicSystem {
                 value: 10,
                 taming: 0,
             },
-            name: markov_magic.sample(rng),
+            name: markov.magic.sample(rng),
             abilities: (0..3).map(|_| Ability::gen(rng)).collect(),
         }
     }
