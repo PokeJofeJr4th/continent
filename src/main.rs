@@ -8,13 +8,12 @@
 )]
 
 use std::cmp::min;
-use std::collections::HashMap;
-use std::fs;
-use std::fs::File;
+use std::{collections::HashMap, ffi::OsStr};
+use std::{fs::{File, self}, env};
 use std::io::{Read, Write};
 use std::slice::Iter;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use json::{array, object, JsonValue};
 use magic::MagicSystem;
 use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
@@ -694,67 +693,47 @@ struct WorldGen {
 
 #[derive(Parser, Debug)]
 struct Args {
-    /// List files
-    #[clap(short, long)]
-    list: bool,
-
-    /// Duration in years
-    #[arg(short, long, default_value_t = 1000)]
-    duration: u32,
-
-    /// File to load from
-    #[arg(short, long)]
-    path: Option<String>,
-
-    /// File to save to
-    #[arg(short, long)]
-    save: Option<String>,
+    /// Subcommand
+    #[command(subcommand)]
+    command: Commands,
 }
 
-fn main() {
-    let args: Args = Args::parse();
+#[derive(Subcommand, Debug)]
+enum Commands {
+    /// List files
+    List,
+    /// Run the simulation
+    Run {
+        /// Duration in years
+        #[arg(short, long, default_value_t = 1000)]
+        duration: u32,
 
-    let mut rng = thread_rng();
+        /// File to load from
+        #[arg()]
+        path: String,
 
-    macro_rules! mkv {
-        {$($markov_data: ident from $path: expr),*} => {
-            $(
-                let mut buf = Vec::new();
-                let mut f = File::open($path).unwrap();
-                f.read_to_end(&mut buf).unwrap();
-                let $markov_data = MarkovData::from_bytes(&buf).unwrap();
-            )*
-        };
+        /// File to save to (doesn't save by default)
+        #[arg(short, long)]
+        save: Option<String>,
+    },
+}
 
-        {$path: expr} => {{
-                let mut buf = Vec::new();
-                let mut f = File::open(format!("markov/{}.mkv", $path)).unwrap();
-                f.read_to_end(&mut buf).unwrap();
-                MarkovData::from_bytes(&buf).unwrap()
-            }
-        }
-    }
-
-    let mkv: mkv::MarkovCollection = mkv::MarkovCollection {
-        gem: mkv!("gemstone"),
-        magic: mkv!("magic"),
-        metal: mkv!("metal"),
-        monster: mkv!("monster"),
-        name: mkv!("name"),
-        plant: mkv!("plant"),
-    };
-
-    let year_delimiter: u32 = (args.duration / 100).max(1);
+fn cmd_run(
+    rng: &mut ThreadRng,
+    markov: &MarkovCollection,
+    duration: u32,
+    path: String,
+    save: Option<String>,
+) {
+    let year_delimiter: u32 = (duration / 100).max(1);
 
     let mut world = {
-        args.path.and_then(|path| {
-            fs::read_to_string(path).map_or(None, |contents| {
-                json::parse(&contents).map_or(None, |jsonvalue| {
-                    World::from_file(&jsonvalue, &mut rng, &mkv)
-                })
-            })
+        fs::read_to_string(path).map_or(None, |contents| {
+            json::parse(&contents)
+                .map_or(None, |jsonvalue| World::from_file(&jsonvalue, rng, markov))
         })
-    }.unwrap();
+    }
+    .unwrap();
 
     for y in 0..world.config.world_size.1 {
         for x in 0..world.config.world_size.0 {
@@ -792,15 +771,107 @@ fn main() {
             + &"═".repeat(100)
             + "╝\x1b[2F"
     );
-    for current_year in 0..args.duration {
+    for current_year in 0..duration {
         if current_year % year_delimiter == 0 {
             print!("\x1b[32m\x1b[C█\x1b[D\x1b[0m");
             std::io::stdout().flush().unwrap();
         }
-        world.tick(&mut rng, &mkv.name);
+        world.tick(rng, &markov.name);
     }
-    if let Some(save) = args.save {
-        fs::write(save, world.s_jsonize().dump()).expect("Unable to write file");
+    if let Some(savefile) = save {
+        fs::write(savefile, world.s_jsonize().dump()).expect("Unable to write file");
+    }
+}
+
+struct WorldFinder {
+    stack: Vec<fs::DirEntry>,
+}
+
+impl WorldFinder {
+    fn new() -> Self {
+        let mut stack: Vec<fs::DirEntry> = Vec::new();
+        stack.extend(
+            fs::read_dir(env::current_dir().unwrap())
+                .unwrap()
+                .filter_map(Result::ok),
+        );
+        Self { stack }
+    }
+}
+
+impl Iterator for WorldFinder {
+    type Item = fs::DirEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while let Some(entry) = self.stack.pop() {
+            let filetype = entry.file_type().unwrap();
+            if filetype.is_dir() {
+                if let Ok(sub_entry) = fs::read_dir(entry.path()) {
+                    self.stack.extend(sub_entry.filter_map(Result::ok))
+                }
+            } else if filetype.is_file()
+                && entry
+                    .path()
+                    .extension()
+                    .and_then(OsStr::to_str)
+                    .unwrap_or_default()
+                    == "json"
+            {
+                let Ok(text) = fs::read_to_string(&entry.path()) else {
+                    println!("");
+                    continue
+                };
+                let Ok(src) = json::parse(&text) else {
+                    continue
+                };
+                if World::s_dejsonize(&src).is_some() || WorldGen::s_dejsonize(&src).is_some() {
+                    return Some(entry);
+                }
+            }
+        }
+        None
+    }
+}
+
+fn main() {
+    let args: Args = Args::parse();
+    let mut rng = thread_rng();
+
+    macro_rules! mkv {
+        {$($markov_data: ident from $path: expr),*} => {
+            $(
+                let mut buf = Vec::new();
+                let mut f = File::open($path).unwrap();
+                f.read_to_end(&mut buf).unwrap();
+                let $markov_data = MarkovData::from_bytes(&buf).unwrap();
+            )*
+        };
+
+        {$path: expr} => {{
+                let mut buf = Vec::new();
+                let mut f = File::open(format!("markov/{}.mkv", $path)).unwrap();
+                f.read_to_end(&mut buf).unwrap();
+                MarkovData::from_bytes(&buf).unwrap()
+            }
+        }
+    }
+
+    let mkv: mkv::MarkovCollection = mkv::MarkovCollection {
+        gem: mkv!("gemstone"),
+        magic: mkv!("magic"),
+        metal: mkv!("metal"),
+        monster: mkv!("monster"),
+        name: mkv!("name"),
+        plant: mkv!("plant"),
+    };
+
+    match args.command {
+        Commands::List => WorldFinder::new().for_each(|file| println!("{}", file.path().display())),
+        Commands::Run {
+            duration,
+            path,
+            save,
+        } => cmd_run(&mut rng, &mkv, duration, path, save),
     }
 }
 

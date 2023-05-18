@@ -13,13 +13,16 @@ Rust/Python world simulation
 
 ### Command Line Tool
 
-Usage: continent.exe \[OPTIONS\] --path <PATH> --save <SAVE>
+#### continent.exe list
 
-Options:
--d, --duration <DURATION> Number of years to run the sim [default: 1000]
--p, --path <PATH> Path of the json file to load (invalid file leads to new world)
--s, --save <SAVE> File to save the sim once completed
--h, --help Print help
+list all available save and gen files in the local directory
+
+#### continent.exe run \[OPTIONS] \<PATH>
+
+|                            |                                           |
+| :------------------------- | :---------------------------------------- |
+| -d, --duration \<DURATION> | Duration in years [default: 1000]         |
+| -s, --save \<SAVE>         | File to save to (doesn't save by default) |
 
 ### Markov Format
 

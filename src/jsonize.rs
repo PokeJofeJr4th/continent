@@ -218,7 +218,7 @@ impl Items {
                 .map(str::parse::<u8>)
                 .filter_map(Result::ok)
                 .collect::<Vec<u8>>();
-            let &rarity = numerical_values.get(0)?;
+            let &rarity = numerical_values.first()?;
             let &abundance = numerical_values.get(1)?;
             let &value = numerical_values.get(2)?;
             let &taming = numerical_values.get(3).unwrap_or(&0);
@@ -478,7 +478,7 @@ impl SuperJsonizable for Config {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        println!("dj config");
+        // println!("dj config");
         match src {
             JsonValue::Object(object) => Some(Self {
                 gen_radius: json_int(object.get("GEN_RADIUS")?)? as usize,
@@ -646,6 +646,9 @@ impl SuperJsonizable for World {
         let JsonValue::Object(object) = src else {
             return None
         };
+        if &json_string(object.get("file_type")?)? != "save" {
+            return None;
+        };
         let config = Config::s_dejsonize(object.get("Config")?)?;
         let items = Items::s_dejsonize(object.get("Items")?)?;
         let region_list = {
@@ -746,6 +749,9 @@ impl SuperJsonizable for WorldGen {
         };
         let Some(JsonValue::Array(items_src)) = object.get("Items") else {
             return None
+        };
+        if &json_string(object.get("file_type")?)? != "gen" {
+            return None;
         };
         let items_strings: Vec<String> = items_src.iter().filter_map(json_string).collect();
         let items_str: String = items_strings
