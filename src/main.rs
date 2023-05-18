@@ -7,11 +7,15 @@
     clippy::cast_lossless
 )]
 
-use std::cmp::min;
-use std::{collections::HashMap, ffi::OsStr};
-use std::{fs::{File, self}, env};
-use std::io::{Read, Write};
-use std::slice::Iter;
+use std::{
+    cmp::min,
+    collections::HashMap,
+    env,
+    ffi::OsStr,
+    fs::{self, File},
+    io::{self, Read, Write},
+    slice::Iter,
+};
 
 use clap::{Parser, Subcommand};
 use json::{array, object, JsonValue};
@@ -33,6 +37,7 @@ macro_rules! mut_loop {
     ($original_list: expr => for $item: ident in $list: ident $func: expr) => {
         let mut $list = std::mem::take(&mut $original_list);
         for _ in 0..$list.len() {
+            // unwrap is safe as long as $func doesn't mutate list
             let $item = $list.pop().unwrap();
             $func
             $list.insert(0, $item);
@@ -424,7 +429,7 @@ impl City {
             .collect();
 
         if npc.pos != npc.origin && !traveler_options.is_empty() {
-            // Continue traveling
+            // Continue traveling; unwrap is safe as long as traveler_options isn't empty
             npc.pos = *traveler_options.choose(rng).unwrap();
             if npc.pos == npc.origin {
                 // Stop traveling
@@ -434,10 +439,14 @@ impl City {
                 });
                 return;
             }
+            // if the npc is home
         } else if npc.pos == npc.origin
+        // and old enough to travel
             && npc.age > 15
+            // and skilled enough in adventuring to feel like it
             && rng.gen::<f32>() * 10.0
                 < (*npc.skills.entry(Skill::Adventuring).or_insert(0) as f32 / npc.age as f32)
+                // and has somewhere to go
             && !traveler_options.is_empty()
         {
             // Begin traveling
@@ -725,15 +734,24 @@ fn cmd_run(
     path: String,
     save: Option<String>,
 ) {
-    let year_delimiter: u32 = (duration / 100).max(1);
+    let Ok(contents) = fs::read_to_string(path) else { return };
+    let Ok(src) = json::parse(&contents) else { return };
+    let Some(mut world) = World::from_file(&src, rng, markov) else { return };
 
-    let mut world = {
-        fs::read_to_string(path).map_or(None, |contents| {
-            json::parse(&contents)
-                .map_or(None, |jsonvalue| World::from_file(&jsonvalue, rng, markov))
-        })
+    simulate_world(&mut world, rng, markov, duration);
+
+    if let Some(savefile) = save {
+        fs::write(savefile, world.s_jsonize().dump()).expect("Unable to write file");
     }
-    .unwrap();
+}
+
+fn simulate_world(
+    world: &mut World,
+    rng: &mut ThreadRng,
+    markov: &MarkovCollection,
+    duration: u32,
+) {
+    let year_delimiter: u32 = (duration / 100).max(1);
 
     for y in 0..world.config.world_size.1 {
         for x in 0..world.config.world_size.0 {
@@ -778,9 +796,6 @@ fn cmd_run(
         }
         world.tick(rng, &markov.name);
     }
-    if let Some(savefile) = save {
-        fs::write(savefile, world.s_jsonize().dump()).expect("Unable to write file");
-    }
 }
 
 struct WorldFinder {
@@ -788,14 +803,10 @@ struct WorldFinder {
 }
 
 impl WorldFinder {
-    fn new() -> Self {
+    fn new() -> io::Result<Self> {
         let mut stack: Vec<fs::DirEntry> = Vec::new();
-        stack.extend(
-            fs::read_dir(env::current_dir().unwrap())
-                .unwrap()
-                .filter_map(Result::ok),
-        );
-        Self { stack }
+        stack.extend(fs::read_dir(env::current_dir()?)?.filter_map(Result::ok));
+        Ok(Self { stack })
     }
 }
 
@@ -804,10 +815,12 @@ impl Iterator for WorldFinder {
 
     fn next(&mut self) -> Option<Self::Item> {
         while let Some(entry) = self.stack.pop() {
-            let filetype = entry.file_type().unwrap();
+            let Ok(filetype) = entry.file_type() else {
+                continue
+            };
             if filetype.is_dir() {
                 if let Ok(sub_entry) = fs::read_dir(entry.path()) {
-                    self.stack.extend(sub_entry.filter_map(Result::ok))
+                    self.stack.extend(sub_entry.filter_map(Result::ok));
                 }
             } else if filetype.is_file()
                 && entry
@@ -817,13 +830,8 @@ impl Iterator for WorldFinder {
                     .unwrap_or_default()
                     == "json"
             {
-                let Ok(text) = fs::read_to_string(&entry.path()) else {
-                    println!("");
-                    continue
-                };
-                let Ok(src) = json::parse(&text) else {
-                    continue
-                };
+                let Ok(text) = fs::read_to_string(&entry.path()) else { continue };
+                let Ok(src) = json::parse(&text) else { continue };
                 if World::s_dejsonize(&src).is_some() || WorldGen::s_dejsonize(&src).is_some() {
                     return Some(entry);
                 }
@@ -838,15 +846,6 @@ fn main() {
     let mut rng = thread_rng();
 
     macro_rules! mkv {
-        {$($markov_data: ident from $path: expr),*} => {
-            $(
-                let mut buf = Vec::new();
-                let mut f = File::open($path).unwrap();
-                f.read_to_end(&mut buf).unwrap();
-                let $markov_data = MarkovData::from_bytes(&buf).unwrap();
-            )*
-        };
-
         {$path: expr} => {{
                 let mut buf = Vec::new();
                 let mut f = File::open(format!("markov/{}.mkv", $path)).unwrap();
@@ -866,7 +865,9 @@ fn main() {
     };
 
     match args.command {
-        Commands::List => WorldFinder::new().for_each(|file| println!("{}", file.path().display())),
+        Commands::List => WorldFinder::new()
+            .unwrap()
+            .for_each(|file| println!("{}", file.path().display())),
         Commands::Run {
             duration,
             path,

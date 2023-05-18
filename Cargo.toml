@@ -7,11 +7,9 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
-shuffle = "0.1.7"
 json = "0.12.4"
 strum = { version = "0.24", features = ["derive"] }
 strum_macros = "0.24"
-csv = "1.2.1"
 clap = { version = "4.2.7", features = ["derive"] }
 
 [build-dependencies]

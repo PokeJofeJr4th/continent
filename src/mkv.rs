@@ -206,8 +206,8 @@ impl MarkovData {
                 }
                 Some(0) => break,
                 Some(&first_byte) => starts.push((
-                    byte_to_char(first_byte).unwrap().0,
-                    byte_to_char(*bytes_iter.next().unwrap()).unwrap().0,
+                    byte_to_char(first_byte)?.0,
+                    byte_to_char(*bytes_iter.next()?)?.0,
                 )),
             }
         }
@@ -217,8 +217,8 @@ impl MarkovData {
             let char_pair = match bytes_iter.next() {
                 None | Some(0) => break,
                 Some(&first_byte) => (
-                    byte_to_char(first_byte).unwrap().0,
-                    byte_to_char(*bytes_iter.next().unwrap()).unwrap().0,
+                    byte_to_char(first_byte)?.0,
+                    byte_to_char(*bytes_iter.next()?)?.0,
                 ),
             };
             let mut weights: Vec<(char, u32)> = Vec::new();
@@ -227,7 +227,7 @@ impl MarkovData {
                 match bytes_iter.next() {
                     None | Some(0) => break,
                     Some(&val) => {
-                        weights.push(byte_to_char(val).map(|(c, u)| (c, u32::from(u))).unwrap());
+                        weights.push(byte_to_char(val).map(|(c, u)| (c, u32::from(u)))?);
                     }
                 }
             }

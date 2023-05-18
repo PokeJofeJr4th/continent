@@ -6,14 +6,10 @@ use crate::{
 use std::fs;
 
 fn json_array_to_usize(arr: &JsonValue, config: &Config) -> Option<usize> {
-    match arr {
-        JsonValue::Array(coords) => {
-            let x = json_int(coords.get(0)?)? as usize;
-            let y = json_int(coords.get(1)?)? as usize;
-            Some(x + y * config.world_size.0)
-        }
-        _ => None,
-    }
+    let JsonValue::Array(coords) = arr else { return None };
+    let x = json_int(coords.get(0)?)? as usize;
+    let y = json_int(coords.get(1)?)? as usize;
+    Some(x + y * config.world_size.0)
 }
 
 fn json_string(jsonvalue: &JsonValue) -> Option<String> {
@@ -25,19 +21,13 @@ fn json_string(jsonvalue: &JsonValue) -> Option<String> {
 }
 
 fn json_int(jsonvalue: &JsonValue) -> Option<i32> {
-    match jsonvalue {
-        JsonValue::Number(num) => Some(num.as_fixed_point_i64(0).unwrap_or_default() as i32),
-        _ => None,
-    }
+    let JsonValue::Number(num) = jsonvalue else { return None };
+    Some(num.as_fixed_point_i64(0).unwrap_or_default() as i32)
 }
 
 fn json_float(jsonvalue: &JsonValue, depth: u16) -> Option<f32> {
-    match jsonvalue {
-        JsonValue::Number(num) => Some(
-            num.as_fixed_point_i64(depth).unwrap_or_default() as f32 / 10.0f32.powf(depth as f32),
-        ),
-        _ => None,
-    }
+    let JsonValue::Number(num) = jsonvalue else { return None };
+    Some(num.as_fixed_point_i64(depth).unwrap_or_default() as f32 / 10.0f32.powf(depth as f32))
 }
 
 pub trait Jsonizable: Sized {
@@ -131,19 +121,18 @@ impl Jsonizable for Inventory {
     }
 
     fn dejsonize(src: &JsonValue, _config: &Config, items: &Items) -> Option<Self> {
-        let JsonValue::Object(object) = src else {
-            return None;
-        };
-        let map = items
-            .all
-            .iter()
-            .map(|item| {
-                object.get(&item.to_string(items)).map_or(0.0, |jsonvalue| {
-                    json_float(jsonvalue, 2).unwrap_or_default()
+        let JsonValue::Object(object) = src else { return None; };
+        Some(Self(
+            items
+                .all
+                .iter()
+                .map(|item| {
+                    object.get(&item.to_string(items)).map_or(0.0, |jsonvalue| {
+                        json_float(jsonvalue, 2).unwrap_or_default()
+                    })
                 })
-            })
-            .collect();
-        Some(Self(map))
+                .collect(),
+        ))
     }
 }
 
@@ -168,27 +157,24 @@ impl SuperJsonizable for Items {
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
         let JsonValue::Object(object) = src else { return None };
         macro_rules! item_type {
-            ($key: expr) => {
-                match object.get("Plants") {
-                    Some(JsonValue::Object(obj)) => obj
-                        .iter()
-                        .filter_map(|(name, values)| match values {
-                            JsonValue::Array(arr) => Some(ItemType {
-                                name: String::from(name),
-                                rarity: json_int(arr.get(0)?)? as u8,
-                                abundance: json_int(arr.get(1)?)? as u8,
-                                value: json_int(arr.get(2)?)? as u8,
-                                taming: arr
-                                    .get(3)
-                                    .map_or(0, |jsonvalue| json_int(jsonvalue).unwrap_or(0))
-                                    as u8,
-                            }),
-                            _ => None,
-                        })
-                        .collect(),
-                    _ => return None,
-                }
-            };
+            ($key: expr) => {{
+                let Some(JsonValue::Object(obj)) = object.get($key) else { return None };
+                obj.iter()
+                    .filter_map(|(name, values)| match values {
+                        JsonValue::Array(arr) => Some(ItemType {
+                            name: String::from(name),
+                            rarity: json_int(arr.get(0)?)? as u8,
+                            abundance: json_int(arr.get(1)?)? as u8,
+                            value: json_int(arr.get(2)?)? as u8,
+                            taming: arr
+                                .get(3)
+                                .map_or(0, |jsonvalue| json_int(jsonvalue).unwrap_or(0))
+                                as u8,
+                        }),
+                        _ => None,
+                    })
+                    .collect()
+            }};
         }
 
         Some(Self::from_item_types(
@@ -256,35 +242,29 @@ impl Jsonizable for Region {
 
     fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
         // println!("dj region");
-        match src {
-            JsonValue::Object(object) => Some(Self {
-                id: 0,
-                tiles: match object.get("tiles") {
-                    Some(JsonValue::Array(array)) => {
-                        let mut tiles = Vec::new();
-                        for tile in array {
-                            tiles.push(json_array_to_usize(tile, config)?);
-                        }
-                        tiles
-                    }
-                    _ => return None,
-                },
-                resources: Inventory::dejsonize(object.get("resources")?, config, items)?,
-                terrain: Terrain::dejsonize(object.get("terrain")?, config, items)?,
-                adjacent_regions: match object.get("adjacent_regions") {
-                    Some(JsonValue::Array(array)) => {
-                        let mut regions = Vec::new();
-                        for item in array {
-                            regions.push(json_int(item)? as usize);
-                        }
-                        Some(regions)
-                    }
-                    _ => None,
-                }?,
-                monster: Monster::dejsonize(object.get("monster")?, config, items),
-            }),
-            _ => None,
-        }
+        let JsonValue::Object(object) = src else { return None };
+        let Some(JsonValue::Array(tiles_array)) = object.get("tiles") else { return None };
+        let Some(JsonValue::Array(adj_array)) = object.get("adjacent_regions") else { return None };
+        Some(Self {
+            id: 0,
+            tiles: {
+                let mut tiles = Vec::new();
+                for tile in tiles_array {
+                    tiles.push(json_array_to_usize(tile, config)?);
+                }
+                tiles
+            },
+            resources: Inventory::dejsonize(object.get("resources")?, config, items)?,
+            terrain: Terrain::dejsonize(object.get("terrain")?, config, items)?,
+            adjacent_regions: {
+                let mut regions = Vec::new();
+                for item in adj_array {
+                    regions.push(json_int(item)? as usize);
+                }
+                regions
+            },
+            monster: Monster::dejsonize(object.get("monster")?, config, items),
+        })
     }
 }
 
@@ -301,20 +281,16 @@ impl Jsonizable for Monster {
     }
 
     fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        match src {
-            JsonValue::Object(object) => Some(Self {
-                alive: match object.get("alive") {
-                    Some(JsonValue::Boolean(alive)) => *alive,
-                    _ => return None,
-                },
-                location: json_array_to_usize(object.get("location")?, config)?,
-                inventory: Inventory::dejsonize(object.get("inventory")?, config, items)?,
-                species: json_string(object.get("species")?)?,
-                name: json_string(object.get("name")?)?,
-                desc: json_string(object.get("desc")?)?,
-            }),
-            _ => None,
-        }
+        let JsonValue::Object(object) = src else { return None };
+        let Some(JsonValue::Boolean(alive)) = object.get("alive") else { return None };
+        Some(Self {
+            alive: *alive,
+            location: json_array_to_usize(object.get("location")?, config)?,
+            inventory: Inventory::dejsonize(object.get("inventory")?, config, items)?,
+            species: json_string(object.get("species")?)?,
+            name: json_string(object.get("name")?)?,
+            desc: json_string(object.get("desc")?)?,
+        })
     }
 }
 
@@ -328,14 +304,12 @@ impl Jsonizable for Snapshot {
     }
 
     fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        match src {
-            JsonValue::Object(object) => Some(Self {
-                population: object.get("population")?.as_fixed_point_i64(0).unwrap_or(0) as i32,
-                production: Inventory::dejsonize(object.get("production")?, config, items)?,
-                imports: Inventory::dejsonize(object.get("imports")?, config, items)?,
-            }),
-            _ => None,
-        }
+        let JsonValue::Object(object) = src else { return None };
+        Some(Self {
+            population: json_int(object.get("population")?)?,
+            production: Inventory::dejsonize(object.get("production")?, config, items)?,
+            imports: Inventory::dejsonize(object.get("imports")?, config, items)?,
+        })
     }
 }
 
@@ -359,36 +333,30 @@ impl Jsonizable for Npc {
     }
 
     fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        match src {
-            JsonValue::Object(object) => Some(Self {
-                name: json_string(object.get("name")?)?,
-                title: json_string(object.get("title")?)?,
-                pos: json_array_to_usize(object.get("pos")?, config)?,
-                origin: json_array_to_usize(object.get("origin")?, config)?,
-                birth: json_int(object.get("birth")?)? as u32,
-                age: json_int(object.get("age")?)? as u32,
-                alive: match object.get("alive") {
-                    Some(JsonValue::Boolean(bool)) => *bool,
-                    _ => return None,
-                },
-                skills: match object.get("skills") {
-                    Some(JsonValue::Object(object)) => {
-                        let mut skills = HashMap::new();
-                        for skill in Skill::iter() {
-                            skills.insert(
-                                skill,
-                                json_int(object.get(skill.as_ref()).unwrap_or(&JsonValue::Null))
-                                    .unwrap_or_default() as u8,
-                            );
-                        }
-                        skills
-                    }
-                    _ => return None,
-                },
-                life: Vec::<HistoricalEvent>::dejsonize(object.get("life")?, config, items)?,
-            }),
-            _ => None,
-        }
+        let JsonValue::Object(object) = src else { return None };
+        let Some(JsonValue::Boolean(alive)) = object.get("alive") else { return None };
+        let Some(JsonValue::Object(skills_obj)) = object.get("skills") else { return None };
+        Some(Self {
+            name: json_string(object.get("name")?)?,
+            title: json_string(object.get("title")?)?,
+            pos: json_array_to_usize(object.get("pos")?, config)?,
+            origin: json_array_to_usize(object.get("origin")?, config)?,
+            birth: json_int(object.get("birth")?)? as u32,
+            age: json_int(object.get("age")?)? as u32,
+            alive: *alive,
+            skills: {
+                let mut skills = HashMap::new();
+                for skill in Skill::iter() {
+                    skills.insert(
+                        skill,
+                        json_int(skills_obj.get(skill.as_ref()).unwrap_or(&JsonValue::Null))
+                            .unwrap_or_default() as u8,
+                    );
+                }
+                skills
+            },
+            life: Vec::<HistoricalEvent>::dejsonize(object.get("life")?, config, items)?,
+        })
     }
 }
 
@@ -402,13 +370,11 @@ impl SuperJsonizable for HistoricalEvent {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        match src {
-            JsonValue::Object(object) => Some(Self {
-                time: json_int(object.get("Time")?)? as u32,
-                description: json_string(object.get("Desc")?)?,
-            }),
-            _ => None,
-        }
+        let JsonValue::Object(object) = src else { return None };
+        Some(Self {
+            time: json_int(object.get("Time")?)? as u32,
+            description: json_string(object.get("Desc")?)?,
+        })
     }
 }
 
@@ -436,9 +402,7 @@ impl Jsonizable for City {
 
     fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
         // println!("dj city");
-        let JsonValue::Object(object) = src else {
-            return None;
-        };
+        let JsonValue::Object(object) = src else { return None; };
         Some(Self {
             name: json_string(object.get("name")?)?,
             pos: json_array_to_usize(object.get("pos")?, config)?,
@@ -479,28 +443,24 @@ impl SuperJsonizable for Config {
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
         // println!("dj config");
-        match src {
-            JsonValue::Object(object) => Some(Self {
-                gen_radius: json_int(object.get("GEN_RADIUS")?)? as usize,
-                world_size: match object.get("WORLD_SIZE") {
-                    Some(JsonValue::Array(array)) => {
-                        let x = json_int(array.get(0)?)? as usize;
-                        let y = json_int(array.get(1)?)? as usize;
-                        (x, y)
-                    }
-                    _ => return None,
-                },
-                coastal_city_density: json_float(object.get("COASTAL_CITY_DENSITY")?, 4)?,
-                inland_city_density: json_float(object.get("INLAND_CITY_DENSITY")?, 4)?,
-                production_constant: json_float(object.get("PRODUCTION_CONSTANT")?, 6)?,
-                population_constant: json_float(object.get("POPULATION_CONSTANT")?, 6)?,
-                mineral_depletion: json_float(object.get("MINERAL_DEPLETION")?, 6)?,
-                notable_npc_threshold: json_int(object.get("NOTABLE_NPC_THRESHOLD")?)? as u8,
-                trade_volume: json_float(object.get("TRADE_VOLUME")?, 3)?,
-                trade_quantity: json_int(object.get("TRADE_QUANTITY")?)?,
-            }),
-            _ => None,
-        }
+        let JsonValue::Object(object) = src else { return None };
+        let Some(JsonValue::Array(world_size)) = object.get("WORLD_SIZE") else { return None };
+        Some(Self {
+            gen_radius: json_int(object.get("GEN_RADIUS")?)? as usize,
+            world_size: {
+                let x = json_int(world_size.get(0)?)? as usize;
+                let y = json_int(world_size.get(1)?)? as usize;
+                (x, y)
+            },
+            coastal_city_density: json_float(object.get("COASTAL_CITY_DENSITY")?, 4)?,
+            inland_city_density: json_float(object.get("INLAND_CITY_DENSITY")?, 4)?,
+            production_constant: json_float(object.get("PRODUCTION_CONSTANT")?, 6)?,
+            population_constant: json_float(object.get("POPULATION_CONSTANT")?, 6)?,
+            mineral_depletion: json_float(object.get("MINERAL_DEPLETION")?, 6)?,
+            notable_npc_threshold: json_int(object.get("NOTABLE_NPC_THRESHOLD")?)? as u8,
+            trade_volume: json_float(object.get("TRADE_VOLUME")?, 3)?,
+            trade_quantity: json_int(object.get("TRADE_QUANTITY")?)?,
+        })
     }
 }
 
@@ -510,13 +470,13 @@ impl SuperJsonizable for Species {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        json_string(src).and_then(|str| match str.as_ref() {
+        match json_string(src)?.as_ref() {
             "Leviathan" => Some(Self::Leviathan),
             "Dragon" => Some(Self::Dragon),
             "Beast" => Some(Self::Beast),
             "Worm" => Some(Self::Worm),
             _ => None,
-        })
+        }
     }
 }
 
@@ -556,27 +516,25 @@ impl SuperJsonizable for Ability {
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
         // println!("dj ability");
-        match src {
-            JsonValue::Object(object) => Some(Self {
-                ability_type: match json_string(object.get("Type")?)?.as_ref() {
-                    "Combat" => AbilityType::Combat,
-                    "Homunculus" => AbilityType::Homunculus,
-                    "Portal" => AbilityType::Portal,
-                    "Youth" => AbilityType::Youth,
-                    _ => return None,
-                },
-                strength: json_int(object.get("Strength")?)? as u8,
-                min_level: json_int(object.get("Min Level")?)? as u8,
-            }),
-            _ => None,
-        }
+        let JsonValue::Object(object) = src else { return None };
+        Some(Self {
+            ability_type: match json_string(object.get("Type")?)?.as_ref() {
+                "Combat" => AbilityType::Combat,
+                "Homunculus" => AbilityType::Homunculus,
+                "Portal" => AbilityType::Portal,
+                "Youth" => AbilityType::Youth,
+                _ => return None,
+            },
+            strength: json_int(object.get("Strength")?)? as u8,
+            min_level: json_int(object.get("Min Level")?)? as u8,
+        })
     }
 }
 
 impl Jsonizable for MagicSystem {
     fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
         object! {
-            Material: [self.material.name.clone(), [self.material.rarity, self.material.abundance, self.material.value], self.material_type.as_ref()],
+            Material: [self.material.name.as_str(), [self.material.rarity, self.material.abundance, self.material.value], self.material_type.as_ref()],
             Localization: "Ubiquitous",
             Name: self.name.clone(),
             Abilities: self.abilities.jsonize(config, items)
@@ -585,15 +543,9 @@ impl Jsonizable for MagicSystem {
 
     fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
         // println!("dj magic");
-        let JsonValue::Object(object) = src else {
-            return None;
-        };
-        let Some(JsonValue::Array(arr)) = object.get("Material") else {
-                    return None
-                };
-        let Some(JsonValue::Array(numbers)) = arr.get(1) else {
-                    return None
-                };
+        let JsonValue::Object(object) = src else { return None; };
+        let Some(JsonValue::Array(arr)) = object.get("Material") else { return None };
+        let Some(JsonValue::Array(numbers)) = arr.get(1) else { return None };
         let material = ItemType {
             name: json_string(arr.get(0)?)?,
             rarity: json_int(numbers.get(0)?)? as u8,
@@ -643,30 +595,25 @@ impl SuperJsonizable for World {
     }
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        let JsonValue::Object(object) = src else {
-            return None
-        };
+        let JsonValue::Object(object) = src else { return None };
+        let Some(JsonValue::Object(tcons)) = object.get("trade_connections") else {return None};
+        let Some(JsonValue::Array(arr)) = object.get("RegionList") else { return None; };
         if &json_string(object.get("file_type")?)? != "save" {
             return None;
         };
         let config = Config::s_dejsonize(object.get("Config")?)?;
         let items = Items::s_dejsonize(object.get("Items")?)?;
-        let region_list = {
-            match object.get("RegionList") {
-                Some(JsonValue::Array(arr)) => {
-                    let mut region_list = Vec::new();
-                    for (id, region) in arr.iter().enumerate() {
-                        let mut region = Region::dejsonize(region, &config, &items)?;
-                        region.id = id;
-                        region_list.push(region);
-                    }
-                    Some(region_list)
-                }
-                _ => None,
-            }
-        }?;
+        let region_list: Vec<Region> = arr
+            .iter()
+            .enumerate()
+            .filter_map(|(id, region)| {
+                Region::dejsonize(region, &config, &items).map(|mut region| {
+                    region.id = id;
+                    region
+                })
+            })
+            .collect();
         let trade_connections = {
-            let Some(JsonValue::Object(tcons)) = object.get("trade_connections") else {return None};
             let mut trade_connections = HashMap::new();
             for (k, v) in tcons.iter() {
                 let key = {
@@ -744,15 +691,9 @@ impl SuperJsonizable for WorldGen {
 
     fn s_dejsonize(src: &JsonValue) -> Option<Self> {
         // println!("dj worldgen");
-        let JsonValue::Object(object) = src else {
-            return None
-        };
-        let Some(JsonValue::Array(items_src)) = object.get("Items") else {
-            return None
-        };
-        if &json_string(object.get("file_type")?)? != "gen" {
-            return None;
-        };
+        let JsonValue::Object(object) = src else { return None };
+        let Some(JsonValue::Array(items_src)) = object.get("Items") else { return None };
+        if &json_string(object.get("file_type")?)? != "gen" { return None; };
         let items_strings: Vec<String> = items_src.iter().filter_map(json_string).collect();
         let items_str: String = items_strings
             .iter()
