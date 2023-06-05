@@ -693,7 +693,9 @@ impl SuperJsonizable for WorldGen {
         // println!("dj worldgen");
         let JsonValue::Object(object) = src else { return None };
         let Some(JsonValue::Array(items_src)) = object.get("Items") else { return None };
-        if &json_string(object.get("file_type")?)? != "gen" { return None; };
+        if &json_string(object.get("file_type")?)? != "gen" {
+            return None;
+        };
         let items_strings: Vec<String> = items_src.iter().filter_map(json_string).collect();
         let items_str: String = items_strings
             .iter()

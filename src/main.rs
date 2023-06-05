@@ -33,6 +33,8 @@ mod worldgen;
 
 mod magic;
 
+mod report;
+
 macro_rules! mut_loop {
     ($original_list: expr => for $item: ident in $list: ident $func: expr) => {
         let mut $list = std::mem::take(&mut $original_list);
@@ -724,6 +726,10 @@ enum Commands {
         /// File to save to (doesn't save by default)
         #[arg(short, long)]
         save: Option<String>,
+
+        /// Report to save to (doesn't report by default)
+        #[arg(short, long)]
+        report: Option<String>,
     },
 }
 
@@ -733,6 +739,7 @@ fn cmd_run(
     duration: u32,
     path: String,
     save: Option<String>,
+    report: Option<String>,
 ) {
     let Ok(contents) = fs::read_to_string(path) else { return };
     let Ok(src) = json::parse(&contents) else { return };
@@ -742,6 +749,9 @@ fn cmd_run(
 
     if let Some(savefile) = save {
         fs::write(savefile, world.s_jsonize().dump()).expect("Unable to write file");
+    }
+    if let Some(reportpath) = report {
+        fs::write(reportpath, report::report(&world)).expect("Unable to write report");
     }
 }
 
@@ -872,7 +882,8 @@ fn main() {
             duration,
             path,
             save,
-        } => cmd_run(&mut rng, &mkv, duration, path, save),
+            report,
+        } => cmd_run(&mut rng, &mkv, duration, path, save, report),
     }
 }
 
