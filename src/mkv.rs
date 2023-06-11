@@ -282,20 +282,20 @@ mod tests {
     #[test]
     fn byte_to_char() {
         use super::byte_to_char;
-        assert_eq!(byte_to_char(0b11100001), Some(('a', 8)));
-        assert_eq!(byte_to_char(0b00000001), Some(('a', 1)));
-        assert_eq!(byte_to_char(0b00011010), Some(('z', 1)));
-        assert_eq!(byte_to_char(0b01111011), Some((';', 4)));
-        assert_eq!(byte_to_char(0b01111100), None);
-        assert_eq!(byte_to_char(0b00000000), None);
+        assert_eq!(byte_to_char(0b1110_0001), Some(('a', 8)));
+        assert_eq!(byte_to_char(0b0000_0001), Some(('a', 1)));
+        assert_eq!(byte_to_char(0b0001_1010), Some(('z', 1)));
+        assert_eq!(byte_to_char(0b0111_1011), Some((';', 4)));
+        assert_eq!(byte_to_char(0b0111_1100), None);
+        assert_eq!(byte_to_char(0b0000_0000), None);
     }
 
     #[test]
     fn char_to_byte() {
         use super::char_to_byte;
-        assert_eq!(char_to_byte(('a', 8)), Some(0b11100001));
-        assert_eq!(char_to_byte(('z', 1)), Some(0b00011010));
-        assert_eq!(char_to_byte((';', 4)), Some(0b01111011));
+        assert_eq!(char_to_byte(('a', 8)), Some(0b1110_0001));
+        assert_eq!(char_to_byte(('z', 1)), Some(0b0001_1010));
+        assert_eq!(char_to_byte((';', 4)), Some(0b0111_1011));
         assert_eq!(char_to_byte((' ', 4)), None);
         assert_eq!(char_to_byte(('`', 8)), None);
     }
@@ -304,16 +304,16 @@ mod tests {
     fn inverse_function() {
         use super::{byte_to_char, char_to_byte};
         assert_eq!(
-            char_to_byte(byte_to_char(0b11100001).unwrap()),
-            Some(0b11100001)
+            char_to_byte(byte_to_char(0b1110_0001).unwrap()),
+            Some(0b1110_0001)
         );
         assert_eq!(
             byte_to_char(char_to_byte(('a', 4)).unwrap()),
             Some(('a', 4))
         );
         assert_eq!(
-            char_to_byte(byte_to_char(0b11111011).unwrap()),
-            Some(0b11111011)
+            char_to_byte(byte_to_char(0b1111_1011).unwrap()),
+            Some(0b1111_1011)
         );
         assert_eq!(
             byte_to_char(char_to_byte((';', 4)).unwrap()),
@@ -333,7 +333,7 @@ mod tests {
         let initialized_markov = MarkovData::from_strings(&string_pool);
         let bytes = initialized_markov.to_bytes();
         let loaded_markov = MarkovData::from_bytes(&bytes).unwrap();
-        assert_eq!(String::from("Strings"), loaded_markov.sample(&mut rng))
+        assert_eq!(String::from("Strings"), loaded_markov.sample(&mut rng));
     }
 
     #[test]

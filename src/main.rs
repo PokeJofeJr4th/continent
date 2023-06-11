@@ -12,8 +12,8 @@ use std::{
     collections::HashMap,
     env,
     ffi::OsStr,
-    fs::{self, File},
-    io::{self, Read, Write},
+    fs,
+    io::{self, Write},
     slice::Iter,
 };
 
@@ -21,6 +21,7 @@ use clap::{Parser, Subcommand};
 use json::{array, object, JsonValue};
 use magic::MagicSystem;
 use rand::{distributions::WeightedIndex, prelude::*, seq::SliceRandom, Rng};
+// use rayon::prelude::*;
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
 mod mkv;
@@ -670,6 +671,16 @@ pub struct World {
 
 impl World {
     fn tick(&mut self, rng: &mut ThreadRng, markov_data_npc: &MarkovData) {
+        // self.city_list.par_iter().for_each(|(pos, city)| {
+        //     city.tick(
+        //         rng,
+        //         self.current_year,
+        //         &self.config,
+        //         &self.items,
+        //         &self.magic,
+        //         markov_data_npc,
+        //     )
+        // });
         for city in self.city_list.values_mut() {
             city.tick(
                 rng,
@@ -857,10 +868,7 @@ fn main() {
 
     macro_rules! mkv {
         {$path: expr} => {{
-                let mut buf = Vec::new();
-                let mut f = File::open(format!("markov/{}.mkv", $path)).unwrap();
-                f.read_to_end(&mut buf).unwrap();
-                MarkovData::from_bytes(&buf).unwrap()
+                MarkovData::from_bytes(include_bytes!(concat!("..\\markov\\", $path, ".mkv"))).unwrap()
             }
         }
     }
