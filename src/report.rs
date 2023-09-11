@@ -115,7 +115,7 @@ fn map(world: &World, range: [usize; 4], scale: usize, include_trade: bool) -> S
     let squares: String = range2d(range)
         .map(|(x, y)| {
             let idx = x + y * world.config.world_size.0;
-            let color = match world.region_list[world.region_map[idx]].terrain {
+            let color = match world.region_list[world.region_map[idx]].terrain() {
                 Terrain::Ocean => "#008",
                 Terrain::Plain => "#080",
                 Terrain::Forest => "#084",

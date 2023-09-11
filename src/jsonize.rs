@@ -195,73 +195,6 @@ impl Items {
     }
 }
 
-impl Jsonizable for Region {
-    fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
-        object! {
-            tiles: self.tiles.iter().map(|&tile| usize_to_vec(tile, config)).collect::<Vec<Vec<usize>>>(),
-            resources: self.resources.jsonize(config, items),
-            terrain: self.terrain.as_ref(),
-            adjacent_regions: self.adjacent_regions.clone(),
-            ancestor_race: "Human",
-            demographics: object!{Human: 1.0},
-            monster: self.monster.clone().map(|m| m.jsonize(config, items))
-        }
-    }
-
-    fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        // println!("dj region");
-        let JsonValue::Object(object) = src else { return None };
-        let Some(JsonValue::Array(tiles_array)) = object.get("tiles") else { return None };
-        let Some(JsonValue::Array(adj_array)) = object.get("adjacent_regions") else { return None };
-        Some(Self {
-            id: 0,
-            tiles: {
-                let mut tiles = Vec::new();
-                for tile in tiles_array {
-                    tiles.push(json_array_to_usize(tile, config)?);
-                }
-                tiles
-            },
-            resources: Inventory::dejsonize(object.get("resources")?, config, items)?,
-            terrain: Terrain::dejsonize(object.get("terrain")?, config, items)?,
-            adjacent_regions: {
-                let mut regions = Vec::new();
-                for item in adj_array {
-                    regions.push(json_int(item)? as usize);
-                }
-                regions
-            },
-            monster: Monster::dejsonize(object.get("monster")?, config, items),
-        })
-    }
-}
-
-impl Jsonizable for Monster {
-    fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
-        object! {
-            name: self.name.clone(),
-            species: self.species.clone(),
-            desc: self.desc.clone(),
-            inventory: self.inventory.jsonize(config, items),
-            alive: self.alive,
-            location: usize_to_vec(self.location, config)
-        }
-    }
-
-    fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        let JsonValue::Object(object) = src else { return None };
-        let Some(JsonValue::Boolean(alive)) = object.get("alive") else { return None };
-        Some(Self {
-            alive: *alive,
-            location: json_array_to_usize(object.get("location")?, config)?,
-            inventory: Inventory::dejsonize(object.get("inventory")?, config, items)?,
-            species: json_string(object.get("species")?)?,
-            name: json_string(object.get("name")?)?,
-            desc: json_string(object.get("desc")?)?,
-        })
-    }
-}
-
 impl Jsonizable for Npc {
     fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
         object! {
@@ -347,46 +280,6 @@ impl SuperJsonizable for Config {
             trade_volume: json_float(object.get("TRADE_VOLUME")?, 3)?,
             trade_quantity: json_int(object.get("TRADE_QUANTITY")?)?,
         })
-    }
-}
-
-impl SuperJsonizable for Species {
-    fn s_jsonize(&self) -> JsonValue {
-        JsonValue::from(self.as_ref())
-    }
-
-    fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        match json_string(src)?.as_ref() {
-            "Leviathan" => Some(Self::Leviathan),
-            "Dragon" => Some(Self::Dragon),
-            "Beast" => Some(Self::Beast),
-            "Worm" => Some(Self::Worm),
-            _ => None,
-        }
-    }
-}
-
-impl Jsonizable for Terrain {
-    fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
-        object! {
-            Resources: {
-                Animal: 0.3, Fish: 0.0, Plant: 0.9, Metal: 0.1, Gemstone: 0.1
-            },
-            Monsters: self.monster_types().jsonize(config, items),
-            Color: self.color()
-        }
-    }
-
-    fn dejsonize(src: &JsonValue, _config: &Config, _items: &Items) -> Option<Self> {
-        match json_string(src)?.as_ref() {
-            "Ocean" => Some(Self::Ocean),
-            "Plain" => Some(Self::Plain),
-            "Forest" => Some(Self::Forest),
-            "Mountain" => Some(Self::Mountain),
-            "Desert" => Some(Self::Desert),
-            "Jungle" => Some(Self::Jungle),
-            _ => None,
-        }
     }
 }
 
@@ -494,7 +387,7 @@ impl SuperJsonizable for World {
             .enumerate()
             .filter_map(|(id, region)| {
                 Region::dejsonize(region, &config, &items).map(|mut region| {
-                    region.id = id;
+                    region.set_id(id);
                     region
                 })
             })
@@ -521,8 +414,8 @@ impl SuperJsonizable for World {
         };
         let mut region_map = vec![0; config.world_size.0 * config.world_size.1];
         for region in &region_list {
-            for &tile in &region.tiles {
-                region_map[tile] = region.id;
+            for &tile in region.tiles() {
+                region_map[tile] = region.id();
             }
         }
         Some(Self {

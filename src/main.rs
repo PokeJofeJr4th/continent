@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand};
 use json::{object, JsonValue};
 use magic::MagicSystem;
 use rand::{prelude::*, seq::SliceRandom, Rng};
-use sim::{handle_trade, City, HistoricalEvent, Inventory, Item, ItemType};
+use sim::{handle_trade, City, HistoricalEvent, Inventory, Item, ItemType, Region};
 // use rayon::prelude::*;
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
@@ -30,6 +30,8 @@ use mkv::{MarkovCollection, MarkovData};
 
 mod jsonize;
 use jsonize::SuperJsonizable;
+
+use crate::sim::Terrain;
 
 mod worldgen;
 
@@ -97,68 +99,6 @@ fn inverse_add(a: f32, b: f32) -> f32 {
 
 fn usize_to_vec(index: usize, config: &Config) -> Vec<usize> {
     vec![index % config.world_size.0, index / config.world_size.0]
-}
-
-#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, Eq, EnumIter)]
-pub enum Terrain {
-    Ocean,
-    Plain,
-    Forest,
-    Mountain,
-    Desert,
-    Jungle,
-}
-
-#[derive(Debug, Clone, Copy, AsRefStr, PartialEq, Eq, EnumIter)]
-pub enum Species {
-    Leviathan,
-    Dragon,
-    Beast,
-    Worm,
-}
-
-impl Terrain {
-    fn monster_types(self) -> Vec<Species> {
-        match self {
-            Self::Ocean => vec![Species::Leviathan],
-            Self::Plain => vec![Species::Dragon, Species::Beast],
-            Self::Forest => vec![Species::Beast],
-            Self::Mountain => vec![Species::Dragon],
-            Self::Desert => vec![Species::Worm, Species::Dragon],
-            Self::Jungle => vec![Species::Beast, Species::Worm],
-        }
-    }
-
-    fn color(self) -> Vec<u8> {
-        match self {
-            Self::Ocean => vec![70, 90, 140],
-            Self::Plain => vec![120, 140, 80],
-            Self::Forest => vec![90, 150, 80],
-            Self::Mountain => vec![96, 96, 96],
-            Self::Desert => vec![160, 140, 90],
-            Self::Jungle => vec![40, 130, 80],
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Region {
-    id: usize,
-    tiles: Vec<usize>,
-    resources: Inventory,
-    terrain: Terrain,
-    adjacent_regions: Vec<usize>,
-    monster: Option<Monster>,
-}
-
-#[derive(Debug, Clone)]
-pub struct Monster {
-    alive: bool,
-    location: usize,
-    inventory: Inventory,
-    species: String,
-    name: String,
-    desc: String,
 }
 
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter, AsRefStr)]
@@ -274,16 +214,6 @@ pub struct World {
 
 impl World {
     fn tick(&mut self, rng: &mut ThreadRng, markov_data_npc: &MarkovData) {
-        // self.city_list.par_iter().for_each(|(pos, city)| {
-        //     city.tick(
-        //         rng,
-        //         self.current_year,
-        //         &self.config,
-        //         &self.items,
-        //         &self.magic,
-        //         markov_data_npc,
-        //     )
-        // });
         for city in self.city_list.values_mut() {
             city.tick(
                 rng,
@@ -381,7 +311,7 @@ fn simulate_world(
         for x in 0..world.config.world_size.0 {
             print!(
                 "{}",
-                match world.region_list[world.region_map[world.config.world_size.0 * y + x]].terrain
+                match world.region_list[world.region_map[world.config.world_size.0 * y + x]].terrain()
                 {
                     Terrain::Ocean => "\x1b[48;5;18m~",
                     Terrain::Plain => "\x1b[48;5;100m%",
