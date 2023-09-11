@@ -54,53 +54,6 @@ macro_rules! mut_loop {
     };
 }
 
-fn get_adj(center: usize, radius: usize, config: &Config) -> Vec<usize> {
-    if radius == 0 {
-        vec![
-            center + 1,
-            center - 1,
-            center + config.world_size.0,
-            center - config.world_size.0,
-        ]
-    } else {
-        let mut adj: Vec<usize> = Vec::new();
-        for x in 0..=(2 * radius) {
-            for y in 0..=(2 * radius) {
-                if (x, y) == (radius, radius) {
-                    continue;
-                }
-                let positive = center + x + y * config.world_size.0;
-                let negative = radius * (1 + config.world_size.0);
-                if negative > positive || (center / config.world_size.0) + y < radius {
-                    continue;
-                }
-                let adj_index: usize = positive - negative;
-                if adj_index < config.world_size.0 * config.world_size.1
-                    && (adj_index / config.world_size.0
-                        == (center / config.world_size.0) + y - radius)
-                {
-                    adj.push(adj_index);
-                }
-            }
-        }
-        adj
-    }
-}
-
-fn distance(a: usize, b: usize, config: &Config) -> f32 {
-    ((((a / config.world_size.0) as i32 - (b / config.world_size.0) as i32).pow(2)
-        + ((a % config.world_size.0) as i32 - (b % config.world_size.0) as i32).pow(2)) as f32)
-        .sqrt()
-}
-
-fn inverse_add(a: f32, b: f32) -> f32 {
-    (a * b) / (a + b)
-}
-
-fn usize_to_vec(index: usize, config: &Config) -> Vec<usize> {
-    vec![index % config.world_size.0, index / config.world_size.0]
-}
-
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumIter, AsRefStr)]
 pub enum Skill {
     Leadership,
@@ -311,7 +264,8 @@ fn simulate_world(
         for x in 0..world.config.world_size.0 {
             print!(
                 "{}",
-                match world.region_list[world.region_map[world.config.world_size.0 * y + x]].terrain()
+                match world.region_list[world.region_map[world.config.world_size.0 * y + x]]
+                    .terrain()
                 {
                     Terrain::Ocean => "\x1b[48;5;18m~",
                     Terrain::Plain => "\x1b[48;5;100m%",

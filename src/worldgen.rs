@@ -1,4 +1,4 @@
-use crate::sim::{Region, Terrain};
+use crate::sim::{distance, get_adj, Region, Terrain};
 #[allow(clippy::wildcard_imports)]
 use crate::*;
 

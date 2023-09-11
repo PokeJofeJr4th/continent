@@ -1,3 +1,4 @@
+use crate::sim::usize_to_vec;
 #[allow(clippy::wildcard_imports)]
 use crate::{
     magic::{Ability, AbilityType, MagicSystem, MaterialType},

@@ -4,11 +4,10 @@ use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 
 use crate::{
-    get_adj,
     jsonize::{json_array_to_usize, json_int, json_string, Jsonizable, SuperJsonizable},
     mkv::MarkovData,
-    sim::Item,
-    usize_to_vec, Config, Items,
+    sim::{get_adj, usize_to_vec, Item},
+    Config, Items,
 };
 
 use super::Inventory;

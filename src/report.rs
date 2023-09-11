@@ -1,4 +1,4 @@
-use crate::{usize_to_vec, Terrain, World, sim::Snapshot};
+use crate::{Terrain, World, sim::{Snapshot, usize_to_vec}};
 
 fn range2d(range: [usize; 4]) -> impl Iterator<Item = (usize, usize)> {
     (range[0]..range[2]).flat_map(move |x| (range[1]..range[3]).map(move |y: usize| (x, y)))

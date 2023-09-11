@@ -7,11 +7,12 @@ use rand::{
 use strum::IntoEnumIterator;
 
 use crate::{
-    distance, get_adj, inverse_add,
     jsonize::{json_array_to_usize, json_int, json_string, Jsonizable},
     magic::MagicSystem,
     mkv::MarkovData,
-    mut_loop, usize_to_vec, Config, Items, Npc, Skill,
+    mut_loop,
+    sim::{distance, get_adj, inverse_add, usize_to_vec},
+    Config, Items, Npc, Skill,
 };
 
 use super::{HistoricalEvent, Inventory, Item, Snapshot};
@@ -87,6 +88,15 @@ impl City {
 
     pub const fn data(&self) -> &HashMap<String, Snapshot> {
         &self.data
+    }
+
+    pub const fn economy(&self) -> &Inventory {
+        &self.economy
+    }
+
+    pub fn import_resource(&mut self, resource: usize, amount: f32) {
+        self.resources.add(resource, amount);
+        self.imports.add(resource, amount);
     }
 
     pub fn new(pos: usize, name: String, resource_gathering: Inventory, items: &Items) -> Self {
@@ -430,79 +440,4 @@ impl City {
             life: Vec::new(),
         }
     }
-}
-
-pub fn handle_trade(
-    route: (usize, usize),
-    city_list: &mut HashMap<usize, City>,
-    trade_connections: &mut HashMap<(usize, usize), i32>,
-    config: &Config,
-    items: &Items,
-) -> Option<()> {
-    // immutable references to generate the resource lists
-    let first_city = city_list.get(&route.0)?;
-    let second_city = city_list.get(&route.1)?;
-
-    let (first_city_supply, second_city_supply): (Vec<f32>, Vec<f32>) = {
-        (0..items.all.len())
-            .map(|item| {
-                (
-                    second_city.economy.get(item) * config.trade_volume
-                        / first_city.economy.get(item),
-                    first_city.economy.get(item) * config.trade_volume
-                        / second_city.economy.get(item),
-                )
-            })
-            .unzip()
-    };
-
-    let first_resource = {
-        let tup = first_city_supply
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, &amount)| amount as i64)?;
-        (tup.0, tup.1.floor())
-    };
-    let second_resource = {
-        let tup = second_city_supply
-            .iter()
-            .enumerate()
-            .min_by_key(|(_, &amount)| amount as i64)?;
-        (tup.0, tup.1.floor())
-    };
-
-    if first_resource.1.is_nan()
-        || second_resource.1.is_nan()
-        || first_resource.1 <= 0.0
-        || second_resource.1 <= 0.0
-    {
-        return None;
-    }
-
-    // mutable references to update the cities' contents.
-    // They have to be like this because you can't have two mutable references at the same time
-    let first_city = city_list.get_mut(&route.0)?;
-    first_city.resources.add(first_resource.0, first_resource.1);
-    first_city.imports.add(first_resource.0, first_resource.1);
-    first_city
-        .resources
-        .add(second_resource.0, -second_resource.1);
-    first_city
-        .imports
-        .add(second_resource.0, -second_resource.1);
-
-    let second_city = city_list.get_mut(&route.1)?;
-    second_city
-        .resources
-        .add(first_resource.0, -first_resource.1);
-    second_city.imports.add(first_resource.0, -first_resource.1);
-    second_city
-        .resources
-        .add(second_resource.0, second_resource.1);
-    second_city
-        .imports
-        .add(second_resource.0, second_resource.1);
-
-    trade_connections.insert(route, *trade_connections.get(&route).unwrap_or(&0) + 1);
-    None
 }
