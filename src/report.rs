@@ -202,11 +202,8 @@ pub fn chart_script(world: &World) -> String {
             ).collect();
             let [x, y] = usize_to_vec(*pos, &world.config)[..] else { return String::new() };
             format!(
-            "var pop_data = google.visualization.arrayToDataTable([['Year', 'Population']{pop_data}]);
-            
-            var pop_options = {{'title':'City Population'}};
-            
-            var pop_chart = new google.visualization.LineChart(document.getElementById('popchart_({x}, {y})'));
+            "const pop_data = google.visualization.arrayToDataTable([['Year', 'Population']{pop_data}]);
+            const pop_chart = new google.visualization.LineChart(document.getElementById('popchart_({x}, {y})'));
             pop_chart.draw(pop_data, pop_options);"
             )
         })
@@ -215,6 +212,7 @@ pub fn chart_script(world: &World) -> String {
         "google.charts.load('current', {{'packages':['corechart']}});
     google.charts.setOnLoadCallback(drawChart);
     function drawChart() {{
+        const pop_options = {{'title':'City Population'}};
         {draw_chart}
     }}"
     )
