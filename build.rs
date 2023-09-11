@@ -24,6 +24,9 @@ fn main() {
         }
     }
 
+    // make sure the `markov` directory exists
+    let _ = fs::create_dir("markov");
+
     markov_data! {
         "csv/animal.csv" => "markov/animal.mkv",
         "csv/gemstone.csv" => "markov/gemstone.mkv",

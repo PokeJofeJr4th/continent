@@ -14,7 +14,7 @@ use crate::{
     mut_loop, usize_to_vec, Config, Inventory, Item, Items, Npc, Skill,
 };
 
-use super::{Snapshot, HistoricalEvent};
+use super::{HistoricalEvent, Snapshot};
 
 #[derive(Debug, Clone)]
 pub struct City {
@@ -105,31 +105,18 @@ impl City {
         }
     }
 
-    pub fn tick(
-        &mut self,
-        rng: &mut ThreadRng,
-        current_year: u32,
-        config: &Config,
-        items: &Items,
-        magic: &MagicSystem,
-        markov_data_npc: &MarkovData,
-    ) {
-        // Save data
-        if current_year % 100 == 0 {
-            self.data.insert(
-                current_year.to_string(),
-                Snapshot {
-                    population: self.population,
-                    production: std::mem::replace(&mut self.production, Inventory::default(items)),
-                    imports: std::mem::replace(&mut self.imports, Inventory::default(items)),
-                },
-            );
-        }
-        if self.population <= 0 {
-            return;
-        }
-        // Produce resources and calculate food
-        let mut total_food_resources = 0.0;
+    fn save_snapshot(&mut self, current_year: u32, items: &Items) {
+        self.data.insert(
+            current_year.to_string(),
+            Snapshot {
+                population: self.population,
+                production: std::mem::replace(&mut self.production, Inventory::default(items)),
+                imports: std::mem::replace(&mut self.imports, Inventory::default(items)),
+            },
+        );
+    }
+
+    fn produce_resources(&mut self, config: &Config, items: &Items) {
         for item in 0..items.all.len() {
             let production = {
                 let production = inverse_add(
@@ -151,24 +138,62 @@ impl City {
                     self.resource_gathering
                         .add(item, -config.mineral_depletion * production);
                 }
-                Some(Item::Plant(_) | Item::Fish | Item::Meat(_)) => {
-                    total_food_resources += self.resources.get(item);
-                }
                 _ => (),
             }
         }
-        let demand: Vec<f32> = self
-            .resources
+    }
+
+    fn demand(
+        resources: &Inventory,
+        population: f32,
+        total_food_resources: f32,
+        items: &Items,
+    ) -> Vec<f32> {
+        resources
             .iter()
             .enumerate()
             .map(|(item, &amount)| {
                 let mut demand = 0.0;
-                if let Some(Item::Plant(_) | Item::Fish | Item::Meat(_)) = items.all.get(item) {
-                    demand += (self.population as f32) * amount / total_food_resources;
+                if items.all.get(item).is_some_and(Item::is_food) {
+                    demand += population * amount / total_food_resources;
                 }
                 demand
             })
-            .collect();
+            .collect()
+    }
+
+    pub fn tick(
+        &mut self,
+        rng: &mut ThreadRng,
+        current_year: u32,
+        config: &Config,
+        items: &Items,
+        magic: &MagicSystem,
+        markov_data_npc: &MarkovData,
+    ) {
+        // Save data
+        if current_year % 100 == 0 {
+            self.save_snapshot(current_year, items);
+        }
+        if self.population <= 0 {
+            return;
+        }
+        self.produce_resources(config, items);
+        // count food resources
+        let mut total_food_resources = 0.0;
+        for i in 0..items.all.len() {
+            if matches!(items.all[i], Item::Fish | Item::Meat(_) | Item::Plant(_)) {
+                total_food_resources += self.resources.get(i);
+            }
+        }
+        // figure out demand for all the items
+        let demand = Self::demand(
+            &self.resources,
+            self.population as f32,
+            total_food_resources,
+            items,
+        );
+        // set the price of everything based on demand
         self.economy = Inventory(
             demand
                 .iter()
@@ -191,6 +216,7 @@ impl City {
                 })
                 .collect(),
         );
+        // make sure nothing is negative
         for (item, amount) in self.resources.0.iter_mut().enumerate() {
             *amount = (*amount - demand[item]).clamp(0.0, f32::MAX);
         }
@@ -216,6 +242,26 @@ impl City {
         self.npcs = npcs;
     }
 
+    fn get_traveler_options(npc: &Npc, config: &Config, rng: &mut ThreadRng) -> Vec<usize> {
+        get_adj(npc.pos, 1, config)
+            .iter()
+            .filter_map(|&point| {
+                let dist = distance(point, npc.origin, config);
+                if dist == 0.0 {
+                    if rng.gen::<f32>() < ((50.0 - npc.age as f32) / npc.age as f32) {
+                        None
+                    } else {
+                        Some(point)
+                    }
+                } else if dist < 10.0 {
+                    Some(point)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     fn tick_npc(
         &mut self,
         npc: &mut Npc,
@@ -232,24 +278,7 @@ impl City {
             return;
         }
         // Traveling
-        let traveler_options: Vec<usize> = get_adj(npc.pos, 1, config)
-            .iter()
-            .filter_map(|&point| {
-                let dist = distance(point, npc.origin, config);
-                if dist == 0.0 {
-                    if rng.gen::<f32>() < ((50.0 - npc.age as f32) / npc.age as f32) {
-                        None
-                    } else {
-                        Some(point)
-                    }
-                } else if dist < 10.0 {
-                    Some(point)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
+        let traveler_options = Self::get_traveler_options(npc, config, rng);
         if npc.pos != npc.origin && !traveler_options.is_empty() {
             // Continue traveling; unwrap is safe as long as traveler_options isn't empty
             npc.pos = *traveler_options.choose(rng).unwrap();
@@ -294,29 +323,29 @@ impl City {
             .collect();
         let study_choice = WeightedIndex::new(study_choices)
             .map_or(None, |res| Skill::iter().nth(res.sample(rng)));
-        if let Some(choice) = study_choice {
-            if {
-                let luck = rng.gen::<f32>();
-                luck / (1.0 - luck)
-            } > (npc.age.pow(2) as f32 * npc.skills[&choice] as f32)
-            {
-                npc.skills.insert(choice, npc.skills[&choice] + 1);
-                match npc.skills.get(&choice) {
-                    Some(2) => npc.life.push(HistoricalEvent {
-                        time: current_year,
-                        description: String::from("began studying ") + choice.as_ref(),
-                    }),
-                    Some(5) => npc.life.push(HistoricalEvent {
-                        time: current_year,
-                        description: String::from("became an apprentice in ") + choice.as_ref(),
-                    }),
-                    Some(10) => npc.life.push(HistoricalEvent {
-                        time: current_year,
-                        description: String::from("became a master in ") + choice.as_ref(),
-                    }),
-                    _ => {}
-                }
-            }
+        let Some(choice) = study_choice else { return };
+        if {
+            let luck = rng.gen::<f32>();
+            luck / (1.0 - luck)
+        } < (npc.age.pow(2) as f32 * npc.skills[&choice] as f32)
+        {
+            return;
+        }
+        *npc.skills.get_mut(&choice).unwrap() += 1;
+        match npc.skills.get(&choice) {
+            Some(2) => npc.life.push(HistoricalEvent {
+                time: current_year,
+                description: String::from("began studying ") + choice.as_ref(),
+            }),
+            Some(5) => npc.life.push(HistoricalEvent {
+                time: current_year,
+                description: String::from("became an apprentice in ") + choice.as_ref(),
+            }),
+            Some(10) => npc.life.push(HistoricalEvent {
+                time: current_year,
+                description: String::from("became a master in ") + choice.as_ref(),
+            }),
+            _ => {}
         }
     }
 

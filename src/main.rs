@@ -36,6 +36,7 @@ mod worldgen;
 
 mod magic;
 
+#[allow(unused_variables)]
 mod report;
 
 #[macro_export]
@@ -164,6 +165,10 @@ pub enum Item {
 }
 
 impl Item {
+    pub fn is_food(&self) -> bool {
+        matches!(self, Self::Fish | Self::Plant(_) | Self::Meat(_))
+    }
+
     fn to_string(self, items: &Items) -> String {
         match self {
             Self::Fish => String::from("Fish"),
