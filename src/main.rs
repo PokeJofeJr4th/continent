@@ -13,14 +13,13 @@ use std::{
     ffi::OsStr,
     fs,
     io::{self, Write},
-    slice::Iter,
 };
 
 use clap::{Parser, Subcommand};
 use json::{object, JsonValue};
 use magic::MagicSystem;
 use rand::{prelude::*, seq::SliceRandom, Rng};
-use sim::{handle_trade, City, HistoricalEvent};
+use sim::{handle_trade, City, HistoricalEvent, Inventory, Item, ItemType};
 // use rayon::prelude::*;
 use strum::{AsRefStr, EnumIter, IntoEnumIterator};
 
@@ -139,84 +138,6 @@ impl Terrain {
             Self::Desert => vec![160, 140, 90],
             Self::Jungle => vec![40, 130, 80],
         }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct ItemType {
-    name: String,
-    rarity: u8,
-    abundance: u8,
-    value: u8,
-    taming: u8,
-}
-
-#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
-pub enum Item {
-    Fish,
-    Plant(u8),
-    Metal(u8),
-    MetalGood(u8),
-    Gem(u8),
-    CutGem(u8),
-    WildAnimal(u8),
-    TameAnimal(u8),
-    Meat(u8),
-}
-
-impl Item {
-    pub fn is_food(&self) -> bool {
-        matches!(self, Self::Fish | Self::Plant(_) | Self::Meat(_))
-    }
-
-    fn to_string(self, items: &Items) -> String {
-        match self {
-            Self::Fish => String::from("Fish"),
-            Self::Plant(item) => items.plants[item as usize].name.clone(),
-            Self::Metal(item) => items.metals[item as usize].name.clone(),
-            Self::MetalGood(item) => format!("{} Goods", items.metals[item as usize].name),
-            Self::Gem(item) => items.gems[item as usize].name.clone(),
-            Self::CutGem(item) => format!("Cut {}", items.gems[item as usize].name),
-            Self::WildAnimal(item) => format!("Wild {}", items.animals[item as usize].name),
-            Self::TameAnimal(item) => format!("Tame {}", items.animals[item as usize].name),
-            Self::Meat(item) => format!("{} Meat", items.animals[item as usize].name),
-        }
-    }
-
-    fn to_index(self, items: &Items) -> Option<usize> {
-        items.all.iter().position(|&m| m == self)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Inventory(Vec<f32>);
-
-impl Inventory {
-    fn default(items: &Items) -> Self {
-        Self(vec![0.0; items.all.len()])
-    }
-
-    fn get(&self, i: usize) -> f32 {
-        match self.0.get(i) {
-            None => 0.0,
-            Some(&res) => res,
-        }
-    }
-
-    fn set(&mut self, i: usize, v: f32) {
-        assert!(i < self.0.len());
-        if !v.is_nan() {
-            self.0[i] = v;
-        }
-    }
-
-    fn add(&mut self, i: usize, v: f32) {
-        assert!(!v.is_nan(), "{i} => {v}");
-        self.set(i, self.get(i) + v);
-    }
-
-    fn iter(&self) -> Iter<'_, f32> {
-        self.0.iter()
     }
 }
 

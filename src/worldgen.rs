@@ -420,13 +420,13 @@ fn generate_cities(
                     City::new(
                         pos,
                         markov_data.sample(rng),
-                        Inventory(
+                        Inventory::from(
                             region_list[region_map[pos]]
                                 .resources
                                 .iter()
                                 .enumerate()
                                 .map(|(_, &val)| rng.gen::<f32>().mul_add(0.1, val))
-                                .collect(),
+                                .collect::<Vec<_>>(),
                         ),
                         items,
                     ),

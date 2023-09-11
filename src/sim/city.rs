@@ -11,10 +11,10 @@ use crate::{
     jsonize::{json_array_to_usize, json_int, json_string, Jsonizable},
     magic::MagicSystem,
     mkv::MarkovData,
-    mut_loop, usize_to_vec, Config, Inventory, Item, Items, Npc, Skill,
+    mut_loop, usize_to_vec, Config, Items, Npc, Skill,
 };
 
-use super::{HistoricalEvent, Snapshot};
+use super::{HistoricalEvent, Inventory, Item, Snapshot};
 
 #[derive(Debug, Clone)]
 pub struct City {
@@ -194,7 +194,7 @@ impl City {
             items,
         );
         // set the price of everything based on demand
-        self.economy = Inventory(
+        self.economy = Inventory::from(
             demand
                 .iter()
                 .enumerate()
@@ -214,10 +214,10 @@ impl City {
                         val
                     }
                 })
-                .collect(),
+                .collect::<Vec<_>>(),
         );
         // make sure nothing is negative
-        for (item, amount) in self.resources.0.iter_mut().enumerate() {
+        for (item, amount) in self.resources.iter_mut().enumerate() {
             *amount = (*amount - demand[item]).clamp(0.0, f32::MAX);
         }
         let net_food = total_food_resources - self.population as f32;

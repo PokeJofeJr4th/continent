@@ -104,38 +104,6 @@ impl<T: Jsonizable> Jsonizable for HashMap<String, T> {
     }
 }
 
-impl Jsonizable for Inventory {
-    fn jsonize(&self, _config: &Config, items: &Items) -> JsonValue {
-        JsonValue::from(
-            self.iter()
-                .enumerate()
-                .filter_map(|(index, &amount)| {
-                    if amount == 0.0 {
-                        None
-                    } else {
-                        Some((items.all[index].to_string(items), amount))
-                    }
-                })
-                .collect::<HashMap<String, f32>>(),
-        )
-    }
-
-    fn dejsonize(src: &JsonValue, _config: &Config, items: &Items) -> Option<Self> {
-        let JsonValue::Object(object) = src else { return None; };
-        Some(Self(
-            items
-                .all
-                .iter()
-                .map(|item| {
-                    object.get(&item.to_string(items)).map_or(0.0, |jsonvalue| {
-                        json_float(jsonvalue, 2).unwrap_or_default()
-                    })
-                })
-                .collect(),
-        ))
-    }
-}
-
 impl SuperJsonizable for Items {
     fn s_jsonize(&self) -> JsonValue {
         object! {
