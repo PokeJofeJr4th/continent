@@ -5,14 +5,14 @@ use crate::{
 };
 use std::fs;
 
-fn json_array_to_usize(arr: &JsonValue, config: &Config) -> Option<usize> {
+pub fn json_array_to_usize(arr: &JsonValue, config: &Config) -> Option<usize> {
     let JsonValue::Array(coords) = arr else { return None };
     let x = json_int(coords.get(0)?)? as usize;
     let y = json_int(coords.get(1)?)? as usize;
     Some(x + y * config.world_size.0)
 }
 
-fn json_string(jsonvalue: &JsonValue) -> Option<String> {
+pub fn json_string(jsonvalue: &JsonValue) -> Option<String> {
     match jsonvalue {
         JsonValue::String(str) => Some(str.clone()),
         JsonValue::Short(str) => Some(String::from(*str)),
@@ -20,12 +20,12 @@ fn json_string(jsonvalue: &JsonValue) -> Option<String> {
     }
 }
 
-fn json_int(jsonvalue: &JsonValue) -> Option<i32> {
+pub fn json_int(jsonvalue: &JsonValue) -> Option<i32> {
     let JsonValue::Number(num) = jsonvalue else { return None };
     Some(num.as_fixed_point_i64(0).unwrap_or_default() as i32)
 }
 
-fn json_float(jsonvalue: &JsonValue, depth: u16) -> Option<f32> {
+pub fn json_float(jsonvalue: &JsonValue, depth: u16) -> Option<f32> {
     let JsonValue::Number(num) = jsonvalue else { return None };
     Some(num.as_fixed_point_i64(depth).unwrap_or_default() as f32 / 10.0f32.powf(depth as f32))
 }
@@ -294,25 +294,6 @@ impl Jsonizable for Monster {
     }
 }
 
-impl Jsonizable for Snapshot {
-    fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
-        object! {
-            population: self.population,
-            production: self.production.jsonize(config, items),
-            imports: self.imports.jsonize(config, items)
-        }
-    }
-
-    fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        let JsonValue::Object(object) = src else { return None };
-        Some(Self {
-            population: json_int(object.get("population")?)?,
-            production: Inventory::dejsonize(object.get("production")?, config, items)?,
-            imports: Inventory::dejsonize(object.get("imports")?, config, items)?,
-        })
-    }
-}
-
 impl Jsonizable for Npc {
     fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
         object! {
@@ -356,69 +337,6 @@ impl Jsonizable for Npc {
                 skills
             },
             life: Vec::<HistoricalEvent>::dejsonize(object.get("life")?, config, items)?,
-        })
-    }
-}
-
-impl SuperJsonizable for HistoricalEvent {
-    fn s_jsonize(&self) -> JsonValue {
-        object! {
-            Type: "Event",
-            Time: self.time,
-            Desc: self.description.clone()
-        }
-    }
-
-    fn s_dejsonize(src: &JsonValue) -> Option<Self> {
-        let JsonValue::Object(object) = src else { return None };
-        Some(Self {
-            time: json_int(object.get("Time")?)? as u32,
-            description: json_string(object.get("Desc")?)?,
-        })
-    }
-}
-
-impl Jsonizable for City {
-    fn jsonize(&self, config: &Config, items: &Items) -> JsonValue {
-        object! {
-            pos: usize_to_vec(self.pos, config),
-            name: self.name.clone(),
-            population: self.population,
-            homunculi: self.homunculi,
-            NPCs: self.npcs.jsonize(config, items),
-            data: self.data.jsonize(config, items),
-            imports: self.imports.jsonize(config, items),
-            production: self.production.jsonize(config, items),
-            resources: self.resources.jsonize(config, items),
-            economy: self.economy.jsonize(config, items),
-            resource_gathering: self.resource_gathering.jsonize(config, items),
-            history: array![],
-            trade: array![],
-            artifacts: array![],
-            cultural_values: object!{},
-            library: object!{}
-        }
-    }
-
-    fn dejsonize(src: &JsonValue, config: &Config, items: &Items) -> Option<Self> {
-        // println!("dj city");
-        let JsonValue::Object(object) = src else { return None; };
-        Some(Self {
-            name: json_string(object.get("name")?)?,
-            pos: json_array_to_usize(object.get("pos")?, config)?,
-            npcs: Vec::<Npc>::dejsonize(object.get("NPCs")?, config, items)?,
-            population: json_int(object.get("population")?)?,
-            homunculi: json_int(object.get("homunculi")?)?,
-            resources: Inventory::dejsonize(object.get("resources")?, config, items)?,
-            economy: Inventory::dejsonize(object.get("economy")?, config, items)?,
-            resource_gathering: Inventory::dejsonize(
-                object.get("resource_gathering")?,
-                config,
-                items,
-            )?,
-            data: HashMap::<String, Snapshot>::dejsonize(object.get("data")?, config, items)?,
-            production: Inventory::dejsonize(object.get("production")?, config, items)?,
-            imports: Inventory::dejsonize(object.get("imports")?, config, items)?,
         })
     }
 }
@@ -646,7 +564,7 @@ impl SuperJsonizable for World {
             region_list,
             city_list: Vec::<City>::dejsonize(object.get("CityList")?, &config, &items)?
                 .iter()
-                .map(|c| (c.pos, c.clone()))
+                .map(|c| (c.pos(), c.clone()))
                 .collect(),
             trade_connections_list: trade_connections.keys().copied().collect(),
             trade_connections,

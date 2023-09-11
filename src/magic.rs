@@ -1,4 +1,6 @@
-use rand::{rngs::ThreadRng, seq::IteratorRandom, Rng};
+use rand::{
+    distributions::Standard, prelude::Distribution, rngs::ThreadRng, seq::IteratorRandom, Rng,
+};
 use strum::IntoEnumIterator;
 use strum_macros::{AsRefStr, EnumIter};
 
@@ -26,26 +28,26 @@ pub struct Ability {
     pub min_level: u8,
 }
 
-impl Ability {
-    fn gen(rng: &mut ThreadRng) -> Self {
+impl Distribution<Ability> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Ability {
         let ability_type = AbilityType::iter().choose(rng).unwrap();
         match ability_type {
-            AbilityType::Combat => Self {
+            AbilityType::Combat => Ability {
                 ability_type,
                 strength: rng.gen_range(2..6),
                 min_level: rng.gen_range(1..3),
             },
-            AbilityType::Homunculus => Self {
+            AbilityType::Homunculus => Ability {
                 ability_type,
                 strength: rng.gen_range(2..5) * 10,
                 min_level: rng.gen_range(2..6),
             },
-            AbilityType::Portal => Self {
+            AbilityType::Portal => Ability {
                 ability_type,
                 strength: rng.gen_range(2..5) * 10,
                 min_level: rng.gen_range(6..12),
             },
-            AbilityType::Youth => Self {
+            AbilityType::Youth => Ability {
                 ability_type,
                 strength: rng.gen_range(2..6),
                 min_level: rng.gen_range(3..8),
@@ -83,7 +85,7 @@ impl MagicSystem {
                 taming: 0,
             },
             name: markov.magic.sample(rng),
-            abilities: (0..3).map(|_| Ability::gen(rng)).collect(),
+            abilities: (0..3).map(|_| rng.gen()).collect(),
         }
     }
 }

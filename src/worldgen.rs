@@ -128,12 +128,12 @@ fn build_region_map(
     let mut regions = 0;
     let mut region_map = vec![None; config.world_size.0 * config.world_size.1];
     for y in 0..config.world_size.1 {
-        region_map[(y * config.world_size.0)] = Some(0);
-        region_map[(config.world_size.0 + y * config.world_size.0 - 1)] = Some(0);
+        region_map[y * config.world_size.0] = Some(0);
+        region_map[config.world_size.0 + y * config.world_size.0 - 1] = Some(0);
     }
     for x in 0..config.world_size.0 {
         region_map[x] = Some(0);
-        region_map[((config.world_size.1 - 1) * config.world_size.0 + x)] = Some(0);
+        region_map[(config.world_size.1 - 1) * config.world_size.0 + x] = Some(0);
     }
     let mut indices: Vec<usize> = (0..(config.world_size.0 * config.world_size.1)).collect();
     loop {
@@ -417,15 +417,10 @@ fn generate_cities(
             .map(|&pos| {
                 (
                     pos,
-                    City {
+                    City::new(
                         pos,
-                        name: markov_data.sample(rng),
-                        npcs: Vec::new(),
-                        population: 100,
-                        homunculi: 0,
-                        resources: Inventory::default(items),
-                        economy: Inventory::default(items),
-                        resource_gathering: Inventory(
+                        markov_data.sample(rng),
+                        Inventory(
                             region_list[region_map[pos]]
                                 .resources
                                 .iter()
@@ -433,10 +428,8 @@ fn generate_cities(
                                 .map(|(_, &val)| rng.gen::<f32>().mul_add(0.1, val))
                                 .collect(),
                         ),
-                        data: HashMap::new(),
-                        imports: Inventory::default(items),
-                        production: Inventory::default(items),
-                    },
+                        items,
+                    ),
                 )
             })
             .collect(),

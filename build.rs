@@ -14,9 +14,13 @@ fn main() {
 
     macro_rules! markov_data {
         {$($src_path: expr => $dest_path: expr),*} => {
-            $(let markov_data: MarkovData = MarkovData::from_csv($src_path).unwrap();
-            let mut f = fs::File::create($dest_path).unwrap();
-            f.write_all(&markov_data.to_bytes()).unwrap();)*
+            $(
+                println!($src_path);
+                let markov_data: MarkovData = MarkovData::from_csv($src_path).unwrap();
+                println!($dest_path);
+                let mut f = fs::File::create($dest_path).unwrap();
+                f.write_all(&markov_data.to_bytes()).unwrap();
+            )*
         }
     }
 

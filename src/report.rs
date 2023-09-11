@@ -1,4 +1,4 @@
-use crate::{usize_to_vec, Terrain, World, Snapshot};
+use crate::{usize_to_vec, Terrain, World, sim::Snapshot};
 
 fn range2d(range: [usize; 4]) -> impl Iterator<Item = (usize, usize)> {
     (range[0]..range[2]).flat_map(move |x| (range[1]..range[3]).map(move |y: usize| (x, y)))
@@ -144,7 +144,7 @@ fn map(world: &World, range: [usize; 4], scale: usize, include_trade: bool) -> S
         .map(|(x, y)| x + y * world.config.world_size.0)
         .filter_map(|idx| world.city_list.get(&idx))
         .map(|city| {
-            let [x, y] = usize_to_vec(city.pos, &world.config)[..] else {return String::new()};
+            let [x, y] = usize_to_vec(city.pos(), &world.config)[..] else {return String::new()};
             format!(
                 "<a href=\"#city_({x}, {y})\" class=\"tooltip\" style=\"
                 border-radius: {border_radius}px;
@@ -162,7 +162,7 @@ fn map(world: &World, range: [usize; 4], scale: usize, include_trade: bool) -> S
                 border_width = 4 / scale,
                 left = ((x - range[0]) * 20 + 5) / scale + 2,
                 top = ((y - range[1]) * 20 + 5) / scale + 2,
-                name = city.name,
+                name = city.name(),
             )
         })
         .collect();
@@ -190,11 +190,11 @@ pub fn chart_script(world: &World) -> String {
         {
             let snapshots: Vec<(String, &Snapshot)> = (0..).map_while(|n| {
                 let idx: String = (n*100).to_string();
-                city.data.get(&idx).map(|snapshot| (idx, snapshot))}).collect();
+                city.data().get(&idx).map(|snapshot| (idx, snapshot))}).collect();
             let pop_data: String = snapshots.iter().map(|(year, snapshot)| 
                 format!(",['{year}', {population}]", population = snapshot.population)
             ).collect();
-            let item_keys = &city.data.get("100").unwrap().imports;
+            let item_keys = &city.data().get("100").unwrap().imports;
             let import_data: String = snapshots.iter().map(|(year, snapshot)|
         {
             String::new()
@@ -239,7 +239,7 @@ pub fn report(world: &World) -> String {
                     <div class=\"small_chart\" id=\"popchart_({x}, {y})\"></div>
                     <div class=\"small_chart\" id=\"importchart_({x}, {y})\"></div>
                     <div class=\"small_chart\" id=\"prodchart_({x}, {y})\"></div>",
-                name = city.name,
+                name = city.name(),
                 map = map(
                     world,
                     [

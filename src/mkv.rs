@@ -1,8 +1,6 @@
 use std::{collections::HashMap, fs};
 
-use rand::{
-    distributions::WeightedIndex, prelude::Distribution, rngs::ThreadRng, seq::SliceRandom,
-};
+use rand::{distributions::WeightedIndex, prelude::Distribution, seq::SliceRandom};
 
 #[derive(Debug, Clone)]
 #[allow(clippy::type_complexity)]
@@ -22,18 +20,8 @@ pub struct MarkovCollection {
     pub plant: MarkovData,
 }
 
-// for some reason it thinks this is dead even though it isn't
-#[allow(dead_code)]
-impl MarkovData {
-    pub fn sample(&self, rng: &mut ThreadRng) -> String {
-        loop {
-            if let Some(res) = self.try_sample(rng) {
-                return res;
-            }
-        }
-    }
-
-    pub fn try_sample(&self, rng: &mut ThreadRng) -> Option<String> {
+impl Distribution<Option<String>> for MarkovData {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> Option<String> {
         let mut result: String = {
             let chars: (char, char) = match self.starts.choose(rng) {
                 Some(&res) => res,
@@ -85,7 +73,21 @@ impl MarkovData {
             None
         }
     }
+}
 
+impl Distribution<String> for MarkovData {
+    fn sample<R: rand::Rng + ?Sized>(&self, rng: &mut R) -> String {
+        loop {
+            if let Some(res) = self.sample(rng) {
+                return res;
+            }
+        }
+    }
+}
+
+// for some reason it thinks this is dead even though it isn't
+#[allow(dead_code)]
+impl MarkovData {
     pub fn from_csv(filename: &str) -> Option<Self> {
         let string_data: Vec<String> = match fs::read_to_string(filename) {
             Ok(res) => res,
@@ -275,7 +277,7 @@ fn byte_to_char(byte: u8) -> Option<(char, u8)> {
 
 #[cfg(test)]
 mod tests {
-    use rand::thread_rng;
+    use rand::{prelude::Distribution, thread_rng};
 
     use super::MarkovData;
 
@@ -333,7 +335,8 @@ mod tests {
         let initialized_markov = MarkovData::from_strings(&string_pool);
         let bytes = initialized_markov.to_bytes();
         let loaded_markov = MarkovData::from_bytes(&bytes).unwrap();
-        assert_eq!(String::from("Strings"), loaded_markov.sample(&mut rng));
+        let test_sample: String = loaded_markov.sample(&mut rng);
+        assert_eq!(String::from("Strings"), test_sample);
     }
 
     #[test]
@@ -343,9 +346,8 @@ mod tests {
         let lowercase_pool = ["strings"];
         let capital_markov = MarkovData::from_strings(&capital_pool);
         let lowercase_markov = MarkovData::from_strings(&lowercase_pool);
-        assert_eq!(
-            capital_markov.sample(&mut rng),
-            lowercase_markov.sample(&mut rng)
-        );
+        let capital_sample: String = capital_markov.sample(&mut rng);
+        let lowercase_sample: String = lowercase_markov.sample(&mut rng);
+        assert_eq!(capital_sample, lowercase_sample);
     }
 }
